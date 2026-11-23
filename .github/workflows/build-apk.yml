@@ -1,0 +1,78 @@
+name: Build WaveBridge APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build & Publish WaveBridge APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Ensure Gradle Wrapper and permissions
+        run: |
+          if [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
+            gradle wrapper --gradle-version 8.10.2
+          fi
+          chmod +x gradlew
+
+      - name: Restore or generate debug.keystore
+        run: |
+          if [ -f debug.keystore.base64 ]; then
+            base64 -d debug.keystore.base64 > debug.keystore
+          else
+            keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug --warning-mode summary
+
+      - name: Prepare APK for Release
+        run: |
+          mkdir -p release-out
+          cp app/build/outputs/apk/debug/app-debug.apk release-out/wavebridge.apk
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wavebridge-apk
+          path: release-out/wavebridge.apk
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view latest > /dev/null 2>&1; then
+            gh release delete latest --yes --cleanup-tag
+          fi
+
+          gh release create latest \
+            release-out/wavebridge.apk \
+            --target "$GITHUB_SHA" \
+            --title "WaveBridge v1.0 (APK)" \
+            --notes "Compilación automática de la app Android WaveBridge lista para instalar en tu smartphone y escuchar el audio del navegador en tus audífonos Bluetooth por Wi-Fi. Descarga 'wavebridge.apk' directamente en tu teléfono." \
+            --latest=true

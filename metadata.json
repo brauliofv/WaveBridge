@@ -1,0 +1,6 @@
+{
+  "name": "WaveBridge",
+  "description": "Puente de audio Wi-Fi de baja latencia entre tu navegador Chrome y tus audífonos Bluetooth conectados al smartphone Android.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

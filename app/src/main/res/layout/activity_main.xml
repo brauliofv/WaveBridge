@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#0B0D10"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="WaveBridge"
+            android:textColor="#F4F5F7"
+            android:textSize="26sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Escucha el audio de tu navegador por Wi-Fi directamente en tus audífonos Bluetooth."
+            android:textColor="#9CA3AF"
+            android:textSize="14sp" />
+
+        <!-- Bluetooth Status Card -->
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            app:cardBackgroundColor="#13171D"
+            app:cardCornerRadius="16dp"
+            app:strokeColor="#1F2630"
+            app:strokeWidth="1dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Salida de audio actual"
+                    android:textColor="#9CA3AF"
+                    android:textSize="12sp" />
+
+                <TextView
+                    android:id="@+id/tvBluetoothOutput"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="Detectando salida de audio..."
+                    android:textColor="#F4F5F7"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- Pairing Card -->
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            app:cardBackgroundColor="#13171D"
+            app:cardCornerRadius="16dp"
+            app:strokeColor="#1F2630"
+            app:strokeWidth="1dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Código de sala (6 caracteres)"
+                    android:textColor="#9CA3AF"
+                    android:textSize="12sp" />
+
+                <EditText
+                    android:id="@+id/etRoomCode"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:layout_marginTop="6dp"
+                    android:background="@android:drawable/editbox_background_normal"
+                    android:backgroundTint="#0B0D10"
+                    android:hint="WVB492"
+                    android:inputType="textCapCharacters|textNoSuggestions"
+                    android:letterSpacing="0.18"
+                    android:maxLength="7"
+                    android:paddingHorizontal="14dp"
+                    android:textColor="#F4F5F7"
+                    android:textColorHint="#4B5563"
+                    android:textSize="20sp"
+                    android:textStyle="bold"
+                    android:typeface="monospace" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="URL del servidor puente (Nube o IP local Wi-Fi)"
+                    android:textColor="#9CA3AF"
+                    android:textSize="12sp" />
+
+                <EditText
+                    android:id="@+id/etServerUrl"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:layout_marginTop="6dp"
+                    android:background="@android:drawable/editbox_background_normal"
+                    android:backgroundTint="#0B0D10"
+                    android:hint="http://192.168.1.50:3000"
+                    android:inputType="textUri"
+                    android:paddingHorizontal="12dp"
+                    android:text="@string/default_server_url"
+                    android:textColor="#F4F5F7"
+                    android:textColorHint="#4B5563"
+                    android:textSize="13sp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnConnect"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:layout_marginTop="16dp"
+                    android:backgroundTint="#0EA5E9"
+                    android:text="Conectar al emisor"
+                    android:textAllCaps="false"
+                    android:textColor="#06121A"
+                    android:textSize="15sp"
+                    android:textStyle="bold"
+                    app:cornerRadius="12dp" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- Telemetry & Controls Card -->
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            app:cardBackgroundColor="#13171D"
+            app:cardCornerRadius="16dp"
+            app:strokeColor="#1F2630"
+            app:strokeWidth="1dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <TextView
+                    android:id="@+id/tvConnectionStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Desconectado"
+                    android:textColor="#F4F5F7"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvTelemetry"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="Latencia RTT: — · Paquetes: 0"
+                    android:textColor="#9CA3AF"
+                    android:textSize="13sp"
+                    android:typeface="monospace" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:text="Volumen en audífonos"
+                    android:textColor="#9CA3AF"
+                    android:textSize="12sp" />
+
+                <SeekBar
+                    android:id="@+id/seekVolume"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:max="150"
+                    android:progress="100" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnMute"
+                    style="@style/Widget.Material3.Button.OutlinedButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:layout_marginTop="12dp"
+                    android:text="Silenciar audio"
+                    android:textAllCaps="false"
+                    android:textColor="#F4F5F7"
+                    app:cornerRadius="12dp"
+                    app:strokeColor="#2A323D" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+    </LinearLayout>
+</ScrollView>
