@@ -58,13 +58,14 @@
 
 WaveBridge **no envía tu audio a la nube**. Toda la transmisión ocurre dentro de tu propio router Wi-Fi entre tu laptop y tu smartphone:
 
-1. En la carpeta del proyecto en tu laptop, inicia el puente local:
+1. En la carpeta del proyecto en tu laptop, inicia el puente local **sin instalar dependencias** usando Python 3 (incluido por defecto en Ubuntu, Debian, Linux Mint y macOS):
    ```bash
-   npm install
-   npm run build
-   npm start
+   python3 bridge.py
    ```
-   *(Quedará escuchando en `http://localhost:3000` dentro de tu Wi-Fi local).*
+   *(Quedará escuchando en `http://localhost:3000` dentro de tu Wi-Fi local y te mostrará en consola la IP de tu laptop para Android).*
+
+   > *(Opcional)* Si prefieres ejecutar el servidor Node.js con la consola web completa en Ubuntu/Debian y no tienes `npm`, instálalo con `sudo apt update && sudo apt install -y nodejs npm` y luego ejecuta `npm install && npm run build && npm start`.
+
 2. Haz clic en el icono de la extensión **WaveBridge** en Chrome: verificará `http://localhost:3000` automáticamente y te mostrará también la **IP Wi-Fi para Android** (por ejemplo `http://192.168.1.50:3000`).
 3. Selecciona **Todo el navegador** (para escuchar todas tus pestañas y notificaciones) y pulsa **Transmitir todo el navegador**. En la ventana de Chrome elige **Pantalla completa** y marca **Compartir también el audio del sistema**.
 4. Abre la app **WaveBridge** en tu Android (conectado al mismo Wi-Fi), pulsa **Buscar PC automáticamente en Wi-Fi** (o escribe la IP local que te mostró la extensión), ingresa el código de sala de 6 caracteres y pulsa **Conectar al emisor**.
@@ -76,10 +77,11 @@ WaveBridge **no envía tu audio a la nube**. Toda la transmisión ocurre dentro 
 
 | Ruta | Descripción |
 | :--- | :--- |
+| `bridge.py` | Puente Wi-Fi local en Python 3 (cero dependencias externas: solo ejecuta `python3 bridge.py`). |
 | `chrome-extension/` | Extensión de Chrome Manifest V3 (`manifest.json`, `popup.*`, `background.js`, `offscreen.*`) lista para cargar descomprimida. |
 | `app/` | Código fuente nativo Android en Kotlin (`AudioBridgeService`, `AudioPacketDecoder`, `MainActivity`). |
 | `.github/workflows/build-apk.yml` | Workflow de GitHub Actions que compila y publica `wavebridge.apk` en Releases (sin incluir la extensión). |
-| `server.ts` | Servidor puente Express + WebSocket (`/ws`) para señalización WebRTC y retransmisión PCM de baja latencia. |
+| `server.ts` | Servidor puente alternativo Express + WebSocket (`/ws`) en Node.js con consola web. |
 | `src/` | Consola web interactiva (Emisor PC, Receptor Móvil Web, Empaquetador de extensión y Guía). |
 
 ---

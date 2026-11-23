@@ -245,7 +245,7 @@ class AudioBridgeService : Service() {
                     httpCode == 404 ->
                         "HTTP 404 en $wsUrl: ese puerto no corresponde a WaveBridge. Verifica que el puente local esté corriendo en puerto 3000."
                     t is java.net.ConnectException || t is java.net.UnknownHostException || t is java.net.SocketTimeoutException ->
-                        "No se pudo conectar con $wsUrl. Revisa que laptop y smartphone estén en el mismo Wi-Fi y ejecuta 'npm start' en tu laptop."
+                        "No se pudo conectar con $wsUrl. Revisa que laptop y smartphone estén en el mismo Wi-Fi y ejecuta 'python3 bridge.py' en tu laptop."
                     else ->
                         "Error de conexión: $rawMsg"
                 }

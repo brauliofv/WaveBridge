@@ -248,7 +248,7 @@ export function SenderView({
               <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-[#F59E0B]" aria-hidden="true" />
               <div>
                 <strong className="font-semibold text-[#FEF3C7]">Solo Wi-Fi Local:</strong>{' '}
-                WaveBridge transmite el audio directamente dentro de tu router sin pasar por la nube. Para enlazar tu extensión de Chrome y la app Android, inicia el puente en tu laptop con <code className="font-mono">npm start</code> y conecta ambos al mismo Wi-Fi.
+                WaveBridge transmite el audio directamente dentro de tu router sin pasar por la nube. Para enlazar tu extensión de Chrome y la app Android, inicia el puente en tu laptop con <code className="font-mono">python3 bridge.py</code> y conecta ambos al mismo Wi-Fi.
               </div>
             </div>
           ) : (

@@ -40,7 +40,7 @@ async function diagnoseWebSocketFailure(wsUrl) {
     }
     return `WebSocket falló en ${wsUrl} (salud HTTP ${res.status}).`;
   } catch {
-    return `No se pudo conectar con ${wsUrl}. Verifica que "npm start" esté ejecutándose en tu laptop.`;
+    return `No se pudo conectar con ${wsUrl}. Verifica que "python3 bridge.py" esté ejecutándose en tu laptop.`;
   }
 }
 

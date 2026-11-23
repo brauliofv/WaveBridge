@@ -119,7 +119,7 @@ async function checkServerReachability(rawUrl) {
   } catch {
     serverStatusEl.className = 'server-status err';
     serverStatusEl.textContent =
-      'Puente local apagado. Ejecuta "npm start" en la carpeta del proyecto en tu laptop.';
+      'Puente local apagado. Ejecuta "python3 bridge.py" en la carpeta del proyecto en tu laptop.';
     return false;
   }
 }

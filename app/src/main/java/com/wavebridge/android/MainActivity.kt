@@ -203,7 +203,7 @@ class MainActivity : AppCompatActivity() {
                 tvConnectionStatus.text = "Laptop encontrada: $foundUrl"
                 Toast.makeText(this@MainActivity, "PC detectada en $foundUrl", Toast.LENGTH_SHORT).show()
             } else {
-                val msg = "No se encontró el puente en tu Wi-Fi. Asegúrate de ejecutar 'npm start' en la laptop."
+                val msg = "No se encontró el puente en tu Wi-Fi. Ejecuta 'python3 bridge.py' en la carpeta del proyecto en tu laptop."
                 tvConnectionStatus.text = msg
                 AudioBridgeService.recordError(msg)
             }
