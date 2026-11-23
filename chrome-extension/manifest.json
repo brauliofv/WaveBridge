@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WaveBridge — Audio de Chrome a Bluetooth",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Transmite todo el audio del navegador (todas las pestañas y notificaciones) directamente por Wi-Fi local a tu smartphone Android sin usar terminal.",
   "permissions": [
     "desktopCapture",

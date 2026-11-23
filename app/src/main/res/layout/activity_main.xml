@@ -211,10 +211,10 @@
                         android:layout_marginTop="6dp"
                         android:background="@android:drawable/editbox_background_normal"
                         android:backgroundTint="#0B0D10"
-                        android:hint="http://192.168.1.50:3000"
+                        android:hint="Ej. 192.168.100.10:3000 (o pulsa Buscar PC)"
                         android:inputType="textUri"
                         android:paddingHorizontal="12dp"
-                        android:text="@string/default_server_url"
+                        android:text=""
                         android:textColor="#F4F5F7"
                         android:textColorHint="#4B5563"
                         android:textSize="13sp" />
@@ -329,7 +329,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="v1.0.2 · 2026-11-22"
+                android:text="v1.0.3 · 2026-11-22"
                 android:textColor="#6B7280"
                 android:textSize="11sp"
                 android:typeface="monospace" />

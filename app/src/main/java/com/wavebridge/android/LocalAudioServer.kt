@@ -125,7 +125,15 @@ class LocalAudioServer(
             }
 
             if (method == "OPTIONS") {
-                writeHttpResponse(output, 204, "No Content", "text/plain", ByteArray(0))
+                val reqHeaders = headers["access-control-request-headers"]
+                writeHttpResponse(
+                    output,
+                    200,
+                    "OK",
+                    "text/plain",
+                    ByteArray(0),
+                    reqHeaders
+                )
                 return
             }
 
@@ -380,16 +388,19 @@ class LocalAudioServer(
         status: Int,
         reason: String,
         contentType: String,
-        body: ByteArray
+        body: ByteArray,
+        extraAllowHeaders: String? = null
     ) {
+        val allowHeaders = extraAllowHeaders?.takeIf { it.isNotBlank() } ?: "Content-Type"
         val headers = (
             "HTTP/1.1 $status $reason\r\n" +
                 "Content-Type: $contentType\r\n" +
                 "Content-Length: ${body.size}\r\n" +
                 "Access-Control-Allow-Origin: *\r\n" +
-                "Access-Control-Allow-Methods: GET,OPTIONS\r\n" +
-                "Access-Control-Allow-Headers: Content-Type\r\n" +
+                "Access-Control-Allow-Methods: GET,POST,OPTIONS\r\n" +
+                "Access-Control-Allow-Headers: $allowHeaders\r\n" +
                 "Access-Control-Allow-Private-Network: true\r\n" +
+                "Access-Control-Max-Age: 600\r\n" +
                 "Connection: close\r\n\r\n"
             ).toByteArray(Charsets.US_ASCII)
         output.write(headers)

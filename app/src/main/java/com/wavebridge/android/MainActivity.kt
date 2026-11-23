@@ -123,7 +123,10 @@ class MainActivity : AppCompatActivity() {
 
         modeDirect = prefs.getBoolean("mode_direct", true)
         val savedServer = prefs.getString("server_url", null)
-        if (!savedServer.isNullOrBlank() && isLocalLanUrl(savedServer)) {
+        if (!savedServer.isNullOrBlank() &&
+            savedServer != "http://192.168.1.50:3000" &&
+            isLocalLanUrl(savedServer)
+        ) {
             etServerUrl.setText(savedServer)
         }
         val savedRoom = prefs.getString("room_code", null)?.takeIf { it.length == 6 }
@@ -174,10 +177,13 @@ class MainActivity : AppCompatActivity() {
             prefs.edit().putBoolean("mode_direct", false).apply()
             applyModeUi()
             updateConnectButtonUi()
+            if (etServerUrl.text.isNullOrBlank()) {
+                scanLocalWifiForBridge(autoConnectRoom = null)
+            }
         }
 
         btnScanLan.setOnClickListener {
-            scanLocalWifiForBridge()
+            scanLocalWifiForBridge(autoConnectRoom = null)
         }
 
         btnConnect.setOnClickListener {
@@ -199,20 +205,20 @@ class MainActivity : AppCompatActivity() {
                 if (modeDirect) {
                     startDirectListener(room)
                 } else {
-                    val serverUrl = etServerUrl.text.toString().trim()
+                    val rawServer = etServerUrl.text.toString().trim()
+                    if (rawServer.isEmpty()) {
+                        scanLocalWifiForBridge(autoConnectRoom = room)
+                        return@setOnClickListener
+                    }
+                    val serverUrl = normalizeBridgeServerUrl(rawServer)
                     if (!isLocalLanUrl(serverUrl)) {
-                        val msg = "Usa la IP local Wi-Fi de tu laptop (ej. http://192.168.1.50:3000)"
+                        val msg = "Usa la IP local Wi-Fi de tu laptop (ej. http://192.168.100.10:3000)"
                         tvConnectionStatus.text = msg
                         AudioBridgeService.recordError(msg)
                         return@setOnClickListener
                     }
-                    prefs.edit().putString("server_url", serverUrl).apply()
-                    val startIntent = Intent(this, AudioBridgeService::class.java).apply {
-                        action = AudioBridgeService.ACTION_CONNECT
-                        putExtra(AudioBridgeService.EXTRA_ROOM_CODE, room)
-                        putExtra(AudioBridgeService.EXTRA_SERVER_URL, serverUrl)
-                    }
-                    ContextCompat.startForegroundService(this, startIntent)
+                    etServerUrl.setText(serverUrl)
+                    startBridgeClient(room, serverUrl)
                 }
             }
         }
@@ -236,6 +242,32 @@ class MainActivity : AppCompatActivity() {
 
         btnDiagnostics.setOnClickListener {
             shareDiagnosticReport()
+        }
+    }
+
+    private fun startBridgeClient(room: String, serverUrl: String) {
+        prefs.edit().putString("server_url", serverUrl).apply()
+        val startIntent = Intent(this, AudioBridgeService::class.java).apply {
+            action = AudioBridgeService.ACTION_CONNECT
+            putExtra(AudioBridgeService.EXTRA_ROOM_CODE, room)
+            putExtra(AudioBridgeService.EXTRA_SERVER_URL, serverUrl)
+        }
+        ContextCompat.startForegroundService(this, startIntent)
+    }
+
+    private fun normalizeBridgeServerUrl(raw: String): String {
+        val trimmed = raw.trim().trimEnd('/')
+        if (trimmed.isEmpty()) return ""
+        val withScheme = if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+            trimmed
+        } else {
+            "http://$trimmed"
+        }
+        return try {
+            val uri = URL(withScheme)
+            if (uri.port == -1) "http://${uri.host}:3000" else "http://${uri.host}:${uri.port}"
+        } catch (_: Exception) {
+            withScheme
         }
     }
 
@@ -300,7 +332,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun scanLocalWifiForBridge() {
+    private fun scanLocalWifiForBridge(autoConnectRoom: String?) {
         scanJob?.cancel()
         btnScanLan.isEnabled = false
         btnScanLan.text = "Buscando PC en Wi-Fi..."
@@ -317,8 +349,11 @@ class MainActivity : AppCompatActivity() {
                 prefs.edit().putString("server_url", foundUrl).apply()
                 tvConnectionStatus.text = "Laptop encontrada: $foundUrl"
                 Toast.makeText(this@MainActivity, "PC detectada en $foundUrl", Toast.LENGTH_SHORT).show()
+                if (!autoConnectRoom.isNullOrEmpty()) {
+                    startBridgeClient(autoConnectRoom, foundUrl)
+                }
             } else {
-                val msg = "No se encontró el puente en tu Wi-Fi. Ejecuta 'python3 bridge.py' en la carpeta del proyecto en tu laptop."
+                val msg = "No se encontró el puente en tu Wi-Fi. Verifica 'python3 bridge.py' en la laptop y si usas Linux abre el puerto con 'sudo ufw allow 3000/tcp' o escribe la IP que muestra bridge.py."
                 tvConnectionStatus.text = msg
                 AudioBridgeService.recordError(msg)
             }
@@ -351,8 +386,8 @@ class MainActivity : AppCompatActivity() {
         var conn: HttpURLConnection? = null
         return try {
             conn = (URL("$baseUrl/api/health").openConnection() as HttpURLConnection).apply {
-                connectTimeout = 350
-                readTimeout = 450
+                connectTimeout = 450
+                readTimeout = 500
                 requestMethod = "GET"
             }
             if (conn.responseCode != 200) return false
@@ -367,10 +402,17 @@ class MainActivity : AppCompatActivity() {
 
     private fun findLocalWifiIpv4(): String? {
         return try {
-            val interfaces = NetworkInterface.getNetworkInterfaces() ?: return null
+            val interfaces = NetworkInterface.getNetworkInterfaces()?.toList().orEmpty()
+            val sorted = interfaces.sortedByDescending { iface ->
+                val name = iface.name.lowercase()
+                when {
+                    name.startsWith("wlan") || name.startsWith("wifi") || name.startsWith("ap") -> 2
+                    name.startsWith("eth") -> 1
+                    else -> 0
+                }
+            }
             var fallback: String? = null
-            while (interfaces.hasMoreElements()) {
-                val iface = interfaces.nextElement()
+            for (iface in sorted) {
                 if (!iface.isUp || iface.isLoopback) continue
                 val addrs = iface.inetAddresses
                 while (addrs.hasMoreElements()) {
@@ -378,8 +420,10 @@ class MainActivity : AppCompatActivity() {
                     if (addr is Inet4Address && !addr.isLoopbackAddress) {
                         val ip = addr.hostAddress ?: continue
                         if (ip.startsWith("169.254.")) continue
-                        if (ip.startsWith("192.168.") || ip.startsWith("10.")) return ip
-                        if (Regex("^172\\.(1[6-9]|2\\d|3[0-1])\\.").containsMatchIn(ip)) fallback = ip
+                        if (ip.startsWith("192.168.")) return ip
+                        if (ip.startsWith("10.") || Regex("^172\\.(1[6-9]|2\\d|3[0-1])\\.").containsMatchIn(ip)) {
+                            if (fallback == null) fallback = ip
+                        }
                     }
                 }
             }

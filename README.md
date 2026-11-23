@@ -1,11 +1,15 @@
 # WaveBridge — Audio del Navegador a Audífonos Bluetooth vía Smartphone
 
-> **AVISO IMPORTANTE (Modo sin terminal vs Plan B):**  
-> En la mayoría de redes Wi-Fi domésticas **no necesitas abrir ninguna consola ni instalar nada extra**: instala **`wavebridge.apk`** en tu teléfono Android, carga la extensión en Google Chrome y usa el modo **Directo al móvil** (*Buscar móvil* → *Transmitir todo el navegador*).
+> **AVISO IMPORTANTE (3 modos disponibles según tu red Wi-Fi):**  
+> En la mayoría de redes domésticas **no necesitas abrir ninguna terminal**: instala **`wavebridge.apk`** en tu Android, carga la extensión en Google Chrome y usa el modo **Directo al móvil** (*Plan A*).
 >
-> **¿No logra conectarse a la primera** (router con aislamiento AP, VPN o bloqueo de red privada de Chrome)? Usa el **Plan B (Puente PC)** ejecutando un solo comando dentro de la carpeta del proyecto:
-> - **Linux (prioritario):** `python3 bridge.py`
-> - **Windows:** `py bridge.py` *(o `python bridge.py`)*
+> **¿No se conecta a la primera?** Usa uno de estos dos respaldos en tu laptop (dentro de la carpeta `WaveBridge`):
+> - **Plan B — Puente ligero en Python (sin instalar nada):**
+>   - **Linux (prioritario):** `python3 bridge.py` *(si el firewall bloquea el puerto, abre una vez: `sudo ufw allow 3000/tcp`)*
+>   - **Windows:** `py bridge.py` *(o `python bridge.py`)*
+> - **Plan C — Interfaz Web completa con Node.js / `npm` (última opción):**
+>   - **Linux:** `sudo apt update && sudo apt install -y nodejs npm` *(si no tienes `npm`)* y luego `npm install && npm run build && npm start`
+>   - **Windows (con Node.js LTS):** `npm install && npm run build && npm start`
 
 **WaveBridge** convierte tu smartphone Android en un receptor inalámbrico de baja latencia para tu laptop o PC sin Bluetooth. Captura el audio de **todo el navegador Chrome** (todas tus pestañas, notificaciones, YouTube, Spotify) o de una sola pestaña, y envíalo **100% dentro de tu Wi-Fi local (sin pasar por la nube)** directamente a los audífonos Bluetooth emparejados con tu teléfono.
 
@@ -23,73 +27,88 @@
 ## Cómo funciona
 
 ```text
-MODO DIRECTO (Por defecto, sin terminal en la laptop):
-[Extensión Chrome (Laptop)] ──(Wi-Fi Local · ws://<IP-Android>:8765/ws)──▶ [App WaveBridge Android] ──▶ [Audífonos Bluetooth]
+PLAN A (Directo, sin terminal en la laptop):
+[Extensión Chrome] ──(Wi-Fi Local · ws://<IP-Android>:8765/ws)──▶ [App Android] ──▶ [Bluetooth]
 
-PLAN B (Si tu router o firewall bloquea la conexión directa):
-[Extensión Chrome (Laptop)] ──▶ [python3 bridge.py (:3000)] ──(Wi-Fi Local)──▶ [App WaveBridge Android] ──▶ [Audífonos Bluetooth]
+PLAN B (Puente Python ligero sin dependencias):
+[Extensión Chrome] ──▶ [python3 bridge.py (:3000)] ──(Wi-Fi Local)──▶ [App Android] ──▶ [Bluetooth]
+
+PLAN C (Última opción: Interfaz Web Node.js + QR o Extensión):
+[Consola Web http://localhost:3000 / Extensión] ──▶ [npm start (:3000)] ──▶ [App Android o Web QR] ──▶ [Bluetooth]
 ```
-
-1. **Receptor directo en Android**: Al abrir **WaveBridge** en tu smartphone, inicia automáticamente un servidor local en el puerto **`8765`** dentro de tu Wi-Fi y muestra su **IP local** y su **código de sala de 6 caracteres**.
-2. **Emisor en Chrome (Laptop)**: Captura **Todo el navegador** (`desktopCapture`, ideal para escuchar música y notificaciones de otras pestañas) o **Solo esta pestaña** (`tabCapture`) a 48 kHz estéreo, encuentra automáticamente tu teléfono en el Wi-Fi y transmite directo sin salir de tu router.
-3. **Salida Bluetooth dedicada**: Tu teléfono reproduce el audio en baja latencia vía `AudioTrack` y lo envía automáticamente por Bluetooth (SBC/AAC/aptX/LDAC) a tus cascos inalámbricos incluso con la pantalla bloqueada.
 
 ---
 
 ## Guía de instalación y uso
 
-### 1. Instalar la App en tu Smartphone Android
+### 1. Instalar la App en Android
 
-1. Descarga **`wavebridge.apk`** desde **[Releases](../../releases/latest)** directamente en tu teléfono e instálalo.
-2. Conecta tus **audífonos Bluetooth** al smartphone como lo haces habitualmente.
-3. Conecta el teléfono al **mismo Wi-Fi** que tu laptop y abre **WaveBridge**: el receptor en modo **Directo (Sin PC)** arrancará solo y mostrará la IP de tu móvil (ej. `192.168.1.42:8765`) y tu código de sala de 6 caracteres.
+1. Descarga **`wavebridge.apk`** desde **[Releases](../../releases/latest)** e instálalo en tu teléfono.
+2. Conecta tus **audífonos Bluetooth** al smartphone.
+3. Abre **WaveBridge** conectado al mismo Wi-Fi que tu laptop: el receptor directo arrancará automáticamente mostrando tu IP local (puerto `8765`) y un código de sala de 6 caracteres.
 
 ### 2. Instalar la Extensión en Google Chrome (Laptop)
 
 > **Carpeta de la extensión:** todos los archivos listos para cargar están en **[`chrome-extension/`](./chrome-extension/)**.
 
 1. Descarga o clona este repositorio en tu laptop.
-2. Abre Google Chrome y entra en `chrome://extensions`.
-3. Activa **Modo de desarrollador** (esquina superior derecha).
-4. Haz clic en **Cargar descomprimida** y selecciona la carpeta **`chrome-extension/`**.
-5. Fija el icono de **WaveBridge** en la barra de herramientas de Chrome.
+2. En Google Chrome entra a `chrome://extensions` y activa **Modo de desarrollador**.
+3. Haz clic en **Cargar descomprimida** y selecciona la carpeta **`chrome-extension/`**.
+4. Fija **WaveBridge** en la barra de herramientas de Chrome.
 
-### 3. Conectar y transmitir (Sin comandos en terminal)
+### 3. Plan A — Conectar directo (Sin comandos en terminal)
 
-1. Abre la extensión **WaveBridge** en Chrome (verás seleccionado **Directo al móvil**).
-2. Pulsa **Buscar móvil** *(detecta automáticamente tu smartphone en tu Wi-Fi y completa el código de sala; si prefieres, escribe la IP que muestra el teléfono)*.
+1. Abre la extensión **WaveBridge** en Chrome (**Directo al móvil**).
+2. Pulsa **Buscar móvil** *(detecta tu Android en tu Wi-Fi y autocompleta la IP y la sala)*.
 3. Deja seleccionado **Todo el navegador** y pulsa **Transmitir todo el navegador**.
-4. En la ventana que abre Chrome elige **Pantalla completa** y marca la casilla **Compartir también el audio del sistema**.
-5. ¡Listo! Todo el audio del navegador sonará directamente en tus audífonos inalámbricos en tiempo real y sin usar internet ni nube.
+4. Elige **Pantalla completa** y marca **Compartir también el audio del sistema**.
 
 ---
 
-## Plan B: Si no se conecta en modo directo
+## Plan B — Puente Python local (`python3 bridge.py`)
 
-Algunas redes Wi-Fi de oficina/universidad o configuraciones estrictas de firewall bloquean que la laptop se conecte al puerto `8765` del teléfono (*AP Isolation* o bloqueo de red privada). En ese caso:
+Si tu router tiene *Aislamiento AP*, VPN o bloqueo de conexión directa hacia el teléfono:
 
-1. En tu laptop, abre una terminal dentro de la carpeta del proyecto (`WaveBridge-main`) y ejecuta **un solo comando**:
+1. En la carpeta del proyecto (`WaveBridge`), ejecuta en terminal:
    - **Linux:**
      ```bash
      python3 bridge.py
      ```
-   - **Windows (PowerShell o CMD):**
+     *(Si el teléfono no logra conectar al puerto `3000`, permite el puerto en el firewall una sola vez: `sudo ufw allow 3000/tcp`)*.
+   - **Windows:**
      ```bat
      py bridge.py
      ```
-     *(Si `py` no está registrado, ejecuta `python bridge.py`)*.
-2. En la extensión de Chrome cambia el selector de arriba a **Puente PC (Plan B)**.
-3. En la app de Android cambia el selector a **Puente PC (Plan B)** y pulsa **Buscar PC automáticamente en Wi-Fi** (o escribe la IP que imprimió `bridge.py` en tu terminal, por ejemplo `http://192.168.1.50:3000`).
-4. Ingresa el mismo código de sala de 6 caracteres en ambos lados y pulsa **Conectar al puente PC** + **Transmitir**.
+     *(o `python bridge.py`)*.
+2. En la extensión de Chrome cambia a **Puente PC (Plan B)**: verificará `http://localhost:3000` y te mostrará un recuadro con **la IP exacta que debes usar en Android** (ej. `http://192.168.100.12:3000`) con un botón **Copiar IP**.
+3. En la app de Android cambia el selector a **Puente PC (Plan B)**: buscará tu laptop automáticamente en la misma subred Wi-Fi (o pega/escribe la IP que mostró `bridge.py`), verifica que coincida el código de sala y pulsa **Conectar al puente PC**.
 
-> **Nota opcional (Node.js):** Si deseas abrir también la consola web completa (`src/`), puedes usar Node.js (`npm install && npm run build && npm start`; en Ubuntu/Debian sin `npm`, instálalo con `sudo apt update && sudo apt install -y nodejs npm`).
+---
+
+## Plan C — Interfaz Web completa con Node.js / `npm` (Última opción)
+
+Si prefieres ejecutar toda la interfaz web (para emitir directamente sin usar extensión y conectar tu smartphone escaneando un código **QR** desde el navegador del teléfono o desde la app Android):
+
+1. Instala Node.js y `npm` si aún no los tienes:
+   - **Linux (Ubuntu / Debian / Mint):**
+     ```bash
+     sudo apt update && sudo apt install -y nodejs npm
+     ```
+   - **Windows:** instala [Node.js LTS](https://nodejs.org/).
+2. Dentro de la carpeta del proyecto ejecuta:
+   ```bash
+   npm install
+   npm run build
+   npm start
+   ```
+3. Abre `http://localhost:3000` en Chrome (pestaña **Emisor PC**) y escanea el código **QR** desde tu smartphone (o usa la app Android en **Puente PC** hacia la IP que imprime la terminal).
 
 ---
 
 ## Reporte rápido de errores y versión
 
-- Tanto la **App Android** como la **Extensión de Chrome** muestran discretamente al pie la versión actual (`v1.0.2` y fecha) junto al botón **Reportar error** / **Diagnóstico**.
-- Si ocurre cualquier fallo, púlsalo para copiar o compartir automáticamente la versión, modo activo, IP/servidor, estado de Bluetooth y los últimos errores registrados.
+- Tanto la **App Android** como la **Extensión** y la **Interfaz Web** muestran la versión actual (`v1.0.3`) y la fecha junto al botón **Reportar error** / **Diagnóstico**.
+- Al pulsarlo se copia/comparte automáticamente el detalle técnico completo para diagnosticar cualquier problema de red o captura.
 
 ---
 
@@ -97,16 +116,15 @@ Algunas redes Wi-Fi de oficina/universidad o configuraciones estrictas de firewa
 
 | Ruta | Descripción |
 | :--- | :--- |
-| `app/` | Código fuente nativo Android en Kotlin (`LocalAudioServer`, `AudioBridgeService`, `AudioPacketDecoder`, `MainActivity`). |
-| `chrome-extension/` | Extensión de Chrome Manifest V3 lista para cargar descomprimida (modo directo `:8765` + Plan B `:3000`). |
-| `bridge.py` | Puente Wi-Fi local Plan B en Python 3 sin dependencias externas (`python3 bridge.py` en Linux / `py bridge.py` en Windows). |
+| `app/` | App nativa Android en Kotlin (`LocalAudioServer`, `AudioBridgeService`, `AudioPacketDecoder`, `MainActivity`). |
+| `chrome-extension/` | Extensión Manifest V3 (`manifest.json`, `popup.*`, `background.js`, `offscreen.*`). |
+| `bridge.py` | **Plan B:** puente Wi-Fi local en Python 3 sin dependencias (`python3 bridge.py`). |
+| `server.ts` y `src/` | **Plan C:** servidor Node.js + interfaz web completa (Emisor PC, Receptor QR y empaquetador `.zip`). |
 | `.github/workflows/build-apk.yml` | Workflow de GitHub Actions que compila y publica `wavebridge.apk` en Releases (sin incluir la extensión). |
-| `server.ts` | Servidor alternativo en Node.js + Express + WebSocket (`/ws`) con consola web. |
-| `src/` | Consola web interactiva (Emisor PC, Receptor Móvil Web, Empaquetador `.zip` y Guía). |
 
 ---
 
 ## Consejos de baja latencia
 
-- Conecta laptop y smartphone a una red **Wi-Fi de 5 GHz** (o la laptop por cable Ethernet al router).
-- En Android, si escuchas largas sesiones con pantalla apagada, desactiva la optimización agresiva de batería para **WaveBridge**.
+- Conecta laptop y smartphone a **Wi-Fi de 5 GHz** (o la laptop por cable Ethernet al router).
+- En Android, desactiva la optimización agresiva de batería para **WaveBridge** si escuchas sesiones largas con pantalla apagada.

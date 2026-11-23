@@ -145,6 +145,7 @@ async function startServer(): Promise<void> {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Private-Network', 'true');
     next();
   });
 
@@ -335,7 +336,10 @@ async function startServer(): Promise<void> {
   }
 
   server.listen(PORT, '0.0.0.0', () => {
-    console.log(`WaveBridge server listening on http://localhost:${PORT}`);
+    console.log(`WaveBridge server (Plan C Web + Puente) listening on http://localhost:${PORT}`);
+    for (const url of getLanUrls(PORT)) {
+      console.log(`  - Android / Móvil Wi-Fi: ${url}`);
+    }
   });
 }
 

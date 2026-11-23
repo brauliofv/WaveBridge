@@ -8,6 +8,9 @@ const targetInputLabel = document.getElementById('targetInputLabel');
 const serverInput = document.getElementById('serverUrl');
 const checkServerBtn = document.getElementById('checkServerBtn');
 const serverStatusEl = document.getElementById('serverStatus');
+const lanBoxEl = document.getElementById('lanBox');
+const lanIpTextEl = document.getElementById('lanIpText');
+const copyLanBtn = document.getElementById('copyLanBtn');
 const roomInput = document.getElementById('roomCode');
 const toggleBtn = document.getElementById('toggleBtn');
 const statusEl = document.getElementById('status');
@@ -17,7 +20,7 @@ const modeTabBtn = document.getElementById('modeTabBtn');
 const versionMetaEl = document.getElementById('versionMeta');
 const copyDiagBtn = document.getElementById('copyDiagBtn');
 
-const manifestVersion = chrome.runtime.getManifest().version || '1.0.2';
+const manifestVersion = chrome.runtime.getManifest().version || '1.0.3';
 versionMetaEl.textContent = `v${manifestVersion} · ${EXT_BUILD_DATE}`;
 
 let captureMode = 'desktop';
@@ -229,6 +232,9 @@ async function checkServerReachability(rawUrl, mode = targetMode) {
   serverStatusEl.className = 'server-status';
   serverStatusEl.textContent =
     mode === 'direct' ? `Verificando móvil en ${baseUrl}...` : 'Probando puente local...';
+  if (mode === 'direct') {
+    lanBoxEl.className = 'lan-box';
+  }
 
   try {
     const controller = new AbortController();
@@ -257,35 +263,55 @@ async function checkServerReachability(rawUrl, mode = targetMode) {
     }
 
     if (json && json.ok) {
-      let lanTip = '';
+      let primaryLanUrl = '';
       try {
         const netRes = await fetch(`${baseUrl}/api/network-info`);
         if (netRes.ok) {
           const netJson = await netRes.json();
           if (Array.isArray(netJson.lanUrls) && netJson.lanUrls.length > 0) {
-            lanTip = ` · IP Wi-Fi para Android: ${netJson.lanUrls[0]}`;
+            primaryLanUrl = netJson.lanUrls[0];
           }
         }
       } catch {
         // ignore optional LAN info error
       }
       serverStatusEl.className = 'server-status ok';
-      serverStatusEl.textContent = `Puente PC activo${lanTip}`;
+      serverStatusEl.textContent = primaryLanUrl
+        ? `Puente PC activo (${json.runtime || 'node'})`
+        : 'Puente PC activo';
+      if (primaryLanUrl) {
+        lanIpTextEl.textContent = primaryLanUrl;
+        lanBoxEl.className = 'lan-box visible';
+      } else {
+        lanBoxEl.className = 'lan-box';
+      }
       return true;
     }
 
     serverStatusEl.className = 'server-status err';
     serverStatusEl.textContent = 'Respuesta inesperada del puente local.';
     return false;
-  } catch {
+  } catch (err) {
+    const errDetail = err && (err.name || err.message) ? ` [${err.name || 'Error'}: ${err.message || ''}]` : '';
+    lanBoxEl.className = 'lan-box';
     serverStatusEl.className = 'server-status err';
     serverStatusEl.textContent =
       mode === 'direct'
-        ? `No responde ${baseUrl}. Abre la app WaveBridge en Android y pulsa Buscar móvil (o prueba "Puente PC (Plan B)").`
-        : 'Puente local apagado. Ejecuta "python3 bridge.py" en la carpeta del proyecto en tu laptop.';
+        ? `No responde ${baseUrl}${errDetail}. Abre WaveBridge en Android y pulsa Buscar móvil (o usa Puente PC Plan B).`
+        : `Puente local apagado${errDetail}. Ejecuta "python3 bridge.py" (Plan B) o "npm start" (Plan C).`;
     return false;
   }
 }
+
+copyLanBtn.addEventListener('click', async () => {
+  const val = lanIpTextEl.textContent || '';
+  if (!val || val === '—') return;
+  await navigator.clipboard.writeText(val);
+  copyLanBtn.textContent = 'Copiado';
+  setTimeout(() => {
+    copyLanBtn.textContent = 'Copiar IP';
+  }, 1500);
+});
 
 function setTargetMode(mode, storedData) {
   targetMode = mode === 'bridge' ? 'bridge' : 'direct';
@@ -293,8 +319,9 @@ function setTargetMode(mode, storedData) {
   targetBridgeBtn.className = targetMode === 'bridge' ? 'mode-btn active' : 'mode-btn';
 
   if (targetMode === 'direct') {
+    lanBoxEl.className = 'lan-box';
     targetInputLabel.textContent = 'IP de tu móvil Android en Wi-Fi (puerto 8765)';
-    serverInput.placeholder = 'Ej. 192.168.1.42';
+    serverInput.placeholder = 'Ej. 192.168.100.194';
     checkServerBtn.textContent = 'Buscar móvil';
     if (storedData !== undefined) {
       serverInput.value =
@@ -309,7 +336,7 @@ function setTargetMode(mode, storedData) {
       serverStatusEl.textContent = 'Abre WaveBridge en tu Android y pulsa "Buscar móvil".';
     }
   } else {
-    targetInputLabel.textContent = 'Puente PC Plan B en esta laptop (puerto 3000)';
+    targetInputLabel.textContent = 'Puente PC Plan B / C en esta laptop (puerto 3000)';
     serverInput.placeholder = 'http://localhost:3000';
     checkServerBtn.textContent = 'Probar';
     if (storedData !== undefined) {

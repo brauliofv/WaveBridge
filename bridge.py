@@ -457,6 +457,7 @@ def send_http_response(
         "Access-Control-Allow-Origin: *\r\n"
         "Access-Control-Allow-Methods: GET,OPTIONS\r\n"
         "Access-Control-Allow-Headers: Content-Type\r\n"
+        "Access-Control-Allow-Private-Network: true\r\n"
         "Connection: close\r\n\r\n"
     )
     writer.write(headers.encode("ascii") + body)
@@ -466,6 +467,8 @@ async def handle_client(
     reader: asyncio.StreamReader, writer: asyncio.StreamWriter
 ) -> None:
     sock = writer.get_extra_info("socket")
+    peername = writer.get_extra_info("peername")
+    peer_ip = peername[0] if isinstance(peername, tuple) and peername else "desconocido"
     if sock is not None:
         try:
             sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
@@ -500,11 +503,14 @@ async def handle_client(
         if path == "/ws" and headers.get("upgrade", "").lower() == "websocket":
             ws_key = headers.get("sec-websocket-key", "")
             if ws_key:
+                print(f"[WS] Conexión WebSocket desde {peer_ip}")
                 await handle_websocket(reader, writer, ws_key)
                 writer.close()
                 return
 
         if path == "/api/health":
+            if peer_ip not in ("127.0.0.1", "::1", "::ffff:127.0.0.1"):
+                print(f"[HTTP] Salud verificada desde {peer_ip}")
             body = json.dumps(
                 {
                     "ok": True,
@@ -568,13 +574,14 @@ async def handle_client(
 async def main() -> None:
     server = await asyncio.start_server(handle_client, "0.0.0.0", PORT)
     lan_urls = get_lan_urls(PORT)
-    print(f"WaveBridge Puente Wi-Fi Local activo en puerto {PORT} (Python 3)")
+    print(f"WaveBridge Puente Wi-Fi Local (Plan B) activo en puerto {PORT} (Python 3)")
     print(f"  - Chrome (en esta laptop): http://localhost:{PORT}")
     if lan_urls:
         for url in lan_urls:
             print(f"  - Android (mismo Wi-Fi):   {url}")
     else:
         print(f"  - Android (mismo Wi-Fi):   http://TU_IP_LOCAL:{PORT}")
+    print("Tip firewall Linux si Android no conecta: sudo ufw allow 3000/tcp")
     print("Presiona Ctrl+C para detener.")
 
     async with server:
