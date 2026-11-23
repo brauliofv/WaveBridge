@@ -10,6 +10,7 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
@@ -25,6 +26,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.card.MaterialCardView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -52,6 +54,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnConnect: MaterialButton
     private lateinit var btnMute: MaterialButton
     private lateinit var btnDiagnostics: MaterialButton
+    private lateinit var cardTelemetry: MaterialCardView
+    private lateinit var tvStateBadge: TextView
     private lateinit var tvBluetoothOutput: TextView
     private lateinit var tvConnectionStatus: TextView
     private lateinit var tvTelemetry: TextView
@@ -65,6 +69,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var audioManager: AudioManager
     private var isMuted = false
     private var isConnected = false
+    private var isSenderConnected = false
     private var modeDirect = true
 
     private val permissionLauncher = registerForActivityResult(
@@ -77,6 +82,7 @@ class MainActivity : AppCompatActivity() {
         override fun onReceive(context: Context, intent: Intent) {
             if (intent.action != AudioBridgeService.ACTION_STATE_UPDATE) return
             isConnected = intent.getBooleanExtra(AudioBridgeService.EXTRA_IS_CONNECTED, false)
+            isSenderConnected = intent.getBooleanExtra(AudioBridgeService.EXTRA_SENDER_CONNECTED, false)
             val statusText = intent.getStringExtra(AudioBridgeService.EXTRA_STATUS_TEXT) ?: "Desconectado"
             val rttMs = intent.getLongExtra(AudioBridgeService.EXTRA_RTT_MS, -1L)
             val packets = intent.getLongExtra(AudioBridgeService.EXTRA_PACKETS, 0L)
@@ -113,6 +119,8 @@ class MainActivity : AppCompatActivity() {
         btnConnect = findViewById(R.id.btnConnect)
         btnMute = findViewById(R.id.btnMute)
         btnDiagnostics = findViewById(R.id.btnDiagnostics)
+        cardTelemetry = findViewById(R.id.cardTelemetry)
+        tvStateBadge = findViewById(R.id.tvStateBadge)
         tvBluetoothOutput = findViewById(R.id.tvBluetoothOutput)
         tvConnectionStatus = findViewById(R.id.tvConnectionStatus)
         tvTelemetry = findViewById(R.id.tvTelemetry)
@@ -138,6 +146,7 @@ class MainActivity : AppCompatActivity() {
         handleIncomingIntent(intent)
 
         isConnected = AudioBridgeService.currentIsConnected
+        isSenderConnected = AudioBridgeService.currentSenderConnected
         if (isConnected) {
             modeDirect = AudioBridgeService.currentDirectMode
             if (AudioBridgeService.currentRoomCode.isNotEmpty()) {
@@ -164,6 +173,9 @@ class MainActivity : AppCompatActivity() {
             }
             modeDirect = true
             prefs.edit().putBoolean("mode_direct", true).apply()
+            if (isStatusError(tvConnectionStatus.text?.toString().orEmpty())) {
+                tvConnectionStatus.text = "Desconectado"
+            }
             applyModeUi()
             updateConnectButtonUi()
         }
@@ -175,6 +187,9 @@ class MainActivity : AppCompatActivity() {
             }
             modeDirect = false
             prefs.edit().putBoolean("mode_direct", false).apply()
+            if (isStatusError(tvConnectionStatus.text?.toString().orEmpty())) {
+                tvConnectionStatus.text = "Desconectado"
+            }
             applyModeUi()
             updateConnectButtonUi()
             if (etServerUrl.text.isNullOrBlank()) {
@@ -198,6 +213,7 @@ class MainActivity : AppCompatActivity() {
                     val msg = "Código inválido: debe tener 6 caracteres"
                     tvConnectionStatus.text = "Ingresa un código válido de 6 caracteres"
                     AudioBridgeService.recordError(msg)
+                    updateConnectButtonUi()
                     return@setOnClickListener
                 }
                 prefs.edit().putString("room_code", room).apply()
@@ -215,6 +231,7 @@ class MainActivity : AppCompatActivity() {
                         val msg = "Usa la IP local Wi-Fi de tu laptop (ej. http://192.168.100.10:3000)"
                         tvConnectionStatus.text = msg
                         AudioBridgeService.recordError(msg)
+                        updateConnectButtonUi()
                         return@setOnClickListener
                     }
                     etServerUrl.setText(serverUrl)
@@ -236,13 +253,14 @@ class MainActivity : AppCompatActivity() {
 
         btnMute.setOnClickListener {
             isMuted = !isMuted
-            btnMute.text = if (isMuted) "Reactivar audio" else "Silenciar audio"
+            updateMuteButtonUi()
             sendVolumeUpdate(seekVolume.progress / 100f, isMuted)
         }
 
         btnDiagnostics.setOnClickListener {
             shareDiagnosticReport()
         }
+        updateMuteButtonUi()
     }
 
     private fun startBridgeClient(room: String, serverUrl: String) {
@@ -283,6 +301,7 @@ class MainActivity : AppCompatActivity() {
             tvPhoneIp.text = "Sin conexión Wi-Fi"
             tvConnectionStatus.text = msg
             AudioBridgeService.recordError(msg)
+            updateConnectButtonUi()
             return
         }
         tvPhoneIp.text = "$ip:${LocalAudioServer.DEFAULT_PORT}"
@@ -297,6 +316,7 @@ class MainActivity : AppCompatActivity() {
             val msg = "No se pudo iniciar el receptor en segundo plano: ${e.localizedMessage ?: e.javaClass.simpleName}"
             tvConnectionStatus.text = msg
             AudioBridgeService.recordError(msg)
+            updateConnectButtonUi()
         }
     }
 
@@ -310,21 +330,27 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun applyModeUi() {
+        val activeBg = Color.parseColor("#0E2A3A")
+        val inactiveBg = Color.parseColor("#0B0D10")
         val activeColor = Color.parseColor("#0EA5E9")
         val inactiveStroke = Color.parseColor("#2A323D")
         val activeText = Color.parseColor("#F4F5F7")
         val mutedText = Color.parseColor("#9CA3AF")
 
         if (modeDirect) {
+            btnModeDirect.backgroundTintList = ColorStateList.valueOf(activeBg)
             btnModeDirect.strokeColor = ColorStateList.valueOf(activeColor)
             btnModeDirect.setTextColor(activeText)
+            btnModeBridge.backgroundTintList = ColorStateList.valueOf(inactiveBg)
             btnModeBridge.strokeColor = ColorStateList.valueOf(inactiveStroke)
             btnModeBridge.setTextColor(mutedText)
             layoutDirectInfo.visibility = View.VISIBLE
             layoutBridgeSettings.visibility = View.GONE
         } else {
+            btnModeBridge.backgroundTintList = ColorStateList.valueOf(activeBg)
             btnModeBridge.strokeColor = ColorStateList.valueOf(activeColor)
             btnModeBridge.setTextColor(activeText)
+            btnModeDirect.backgroundTintList = ColorStateList.valueOf(inactiveBg)
             btnModeDirect.strokeColor = ColorStateList.valueOf(inactiveStroke)
             btnModeDirect.setTextColor(mutedText)
             layoutDirectInfo.visibility = View.GONE
@@ -337,6 +363,7 @@ class MainActivity : AppCompatActivity() {
         btnScanLan.isEnabled = false
         btnScanLan.text = "Buscando PC en Wi-Fi..."
         tvConnectionStatus.text = "Escaneando red Wi-Fi local (puerto 3000)..."
+        updateConnectButtonUi()
 
         scanJob = uiScope.launch {
             val foundUrl = withContext(Dispatchers.IO) {
@@ -348,6 +375,7 @@ class MainActivity : AppCompatActivity() {
                 etServerUrl.setText(foundUrl)
                 prefs.edit().putString("server_url", foundUrl).apply()
                 tvConnectionStatus.text = "Laptop encontrada: $foundUrl"
+                updateConnectButtonUi()
                 Toast.makeText(this@MainActivity, "PC detectada en $foundUrl", Toast.LENGTH_SHORT).show()
                 if (!autoConnectRoom.isNullOrEmpty()) {
                     startBridgeClient(autoConnectRoom, foundUrl)
@@ -356,6 +384,7 @@ class MainActivity : AppCompatActivity() {
                 val msg = "No se encontró el puente en tu Wi-Fi. Verifica 'python3 bridge.py' en la laptop y si usas Linux abre el puerto con 'sudo ufw allow 3000/tcp' o escribe la IP que muestra bridge.py."
                 tvConnectionStatus.text = msg
                 AudioBridgeService.recordError(msg)
+                updateConnectButtonUi()
             }
         }
     }
@@ -507,6 +536,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun syncFromServiceState() {
         isConnected = AudioBridgeService.currentIsConnected
+        isSenderConnected = AudioBridgeService.currentSenderConnected
         if (isConnected) {
             modeDirect = AudioBridgeService.currentDirectMode
             applyModeUi()
@@ -554,17 +584,90 @@ class MainActivity : AppCompatActivity() {
         startService(intent)
     }
 
-    private fun updateConnectButtonUi() {
-        btnConnect.text = if (isConnected) {
-            if (modeDirect) "Detener receptor Wi-Fi" else "Desconectar receptor"
+    private fun updateMuteButtonUi() {
+        if (isMuted) {
+            btnMute.text = "Reactivar audio"
+            btnMute.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#451A03"))
+            btnMute.strokeColor = ColorStateList.valueOf(Color.parseColor("#F59E0B"))
+            btnMute.setTextColor(Color.parseColor("#FDE68A"))
         } else {
-            if (modeDirect) "Iniciar receptor Wi-Fi" else "Conectar al puente PC"
+            btnMute.text = "Silenciar audio"
+            btnMute.backgroundTintList = ColorStateList.valueOf(Color.TRANSPARENT)
+            btnMute.strokeColor = ColorStateList.valueOf(Color.parseColor("#2A323D"))
+            btnMute.setTextColor(Color.parseColor("#F4F5F7"))
         }
+    }
+
+    private fun styleBadge(bgHex: String, textHex: String, label: String) {
+        tvStateBadge.text = label
+        tvStateBadge.setTextColor(Color.parseColor(textHex))
+        val radiusPx = 8f * resources.displayMetrics.density
+        tvStateBadge.background = GradientDrawable().apply {
+            cornerRadius = radiusPx
+            setColor(Color.parseColor(bgHex))
+        }
+    }
+
+    private fun isStatusError(text: String): Boolean {
+        val lower = text.lowercase()
+        return lower.startsWith("error") ||
+            lower.startsWith("http ") ||
+            lower.startsWith("no se pudo") ||
+            lower.startsWith("no se encontró") ||
+            lower.startsWith("conecta este") ||
+            lower.startsWith("ingresa ") ||
+            lower.startsWith("usa la ip") ||
+            lower.startsWith("código inválido")
+    }
+
+    private fun updateConnectButtonUi() {
+        if (isConnected) {
+            btnConnect.text = if (modeDirect) "Detener receptor Wi-Fi" else "Desconectar puente PC"
+            btnConnect.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#DC2626"))
+            btnConnect.setTextColor(Color.parseColor("#FFFFFF"))
+
+            if (isSenderConnected) {
+                cardTelemetry.strokeColor = Color.parseColor("#10B981")
+                styleBadge("#064E3B", "#34D399", "● EN VIVO · RECIBIENDO AUDIO")
+                tvConnectionStatus.setTextColor(Color.parseColor("#34D399"))
+            } else {
+                cardTelemetry.strokeColor = Color.parseColor("#0EA5E9")
+                val badgeLabel = if (modeDirect) "● ACTIVO · ESPERANDO CHROME" else "● CONECTADO · ESPERANDO EMISOR"
+                styleBadge("#0E2A3A", "#38BDF8", badgeLabel)
+                tvConnectionStatus.setTextColor(Color.parseColor("#38BDF8"))
+            }
+        } else {
+            if (modeDirect) {
+                btnConnect.text = "Iniciar receptor Wi-Fi"
+                btnConnect.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#10B981"))
+                btnConnect.setTextColor(Color.parseColor("#042F2E"))
+            } else {
+                btnConnect.text = "Conectar al puente PC"
+                btnConnect.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#0EA5E9"))
+                btnConnect.setTextColor(Color.parseColor("#06121A"))
+            }
+
+            val currentMsg = tvConnectionStatus.text?.toString().orEmpty()
+            if (isStatusError(currentMsg)) {
+                cardTelemetry.strokeColor = Color.parseColor("#DC2626")
+                styleBadge("#450A0A", "#FCA5A5", "● ERROR DE CONEXIÓN")
+                tvConnectionStatus.setTextColor(Color.parseColor("#FCA5A5"))
+            } else {
+                cardTelemetry.strokeColor = Color.parseColor("#1F2630")
+                styleBadge("#1F2630", "#9CA3AF", "● INACTIVO")
+                tvConnectionStatus.setTextColor(Color.parseColor("#F4F5F7"))
+            }
+        }
+
+        val lockedAlpha = if (isConnected) 0.55f else 1.0f
         etRoomCode.isEnabled = !isConnected
         etServerUrl.isEnabled = !isConnected
         btnScanLan.isEnabled = !isConnected
         btnModeDirect.isEnabled = !isConnected
         btnModeBridge.isEnabled = !isConnected
+        btnModeDirect.alpha = lockedAlpha
+        btnModeBridge.alpha = lockedAlpha
+        btnScanLan.alpha = lockedAlpha
     }
 
     private fun refreshBluetoothOutput() {

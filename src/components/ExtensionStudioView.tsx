@@ -159,7 +159,7 @@ export function ExtensionStudioView() {
           <ol className="space-y-2.5 text-sm text-[#9CA3AF] list-decimal list-inside leading-relaxed">
             <li>Sube este repositorio a GitHub: el workflow <code className="font-mono text-[#F4F5F7]">build-apk.yml</code> compilará automáticamente <code className="font-mono text-[#F4F5F7]">wavebridge.apk</code> y lo publicará en <strong className="text-[#F4F5F7]">Releases</strong>.</li>
             <li>Instala <code className="font-mono text-[#F4F5F7]">wavebridge.apk</code> en tu Android, conecta tus audífonos Bluetooth y abre la app (<strong className="text-[#F4F5F7]">Plan A directo</strong> en puerto <code className="font-mono text-[#F4F5F7]">8765</code>).</li>
-            <li>En Chrome pulsa <strong className="text-[#F4F5F7]">Buscar móvil</strong> y <strong className="text-[#F4F5F7]">Transmitir todo el navegador</strong>. Si tu router bloquea la conexión directa, usa <strong className="text-[#F4F5F7]">Plan B</strong> (<code className="font-mono text-[#F4F5F7]">python3 bridge.py</code>) o <strong className="text-[#F4F5F7]">Plan C</strong> (<code className="font-mono text-[#F4F5F7]">npm install && npm run build && npm start</code>).</li>
+            <li>En Chrome pulsa <strong className="text-[#F4F5F7]">Buscar móvil</strong> y <strong className="text-[#F4F5F7]">Transmitir todo el navegador</strong>. Si tu router bloquea la conexión directa, usa <strong className="text-[#F4F5F7]">Plan B</strong> (<code className="font-mono text-[#F4F5F7]">python3 bridge.py</code>) o <strong className="text-[#F4F5F7]">Plan C</strong> (<code className="font-mono text-[#F4F5F7]">npm install && npm run build && npm run web</code>).</li>
           </ol>
         </div>
       </div>

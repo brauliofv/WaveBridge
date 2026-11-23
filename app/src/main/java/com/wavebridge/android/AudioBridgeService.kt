@@ -56,6 +56,10 @@ class AudioBridgeService : Service() {
             private set
 
         @Volatile
+        var currentSenderConnected = false
+            private set
+
+        @Volatile
         var currentDirectMode = true
             private set
 
@@ -317,6 +321,7 @@ class AudioBridgeService : Service() {
 
             override fun onMessage(ws: WebSocket, bytes: ByteString) {
                 val frame = AudioPacketDecoder.decode(bytes.toByteArray()) ?: return
+                val becameActive = senderConnectedFlag.compareAndSet(false, true)
                 val count = packetsCounter.incrementAndGet()
                 audioExecutor.execute {
                     try {
@@ -325,7 +330,10 @@ class AudioBridgeService : Service() {
                         recordError("AudioTrack: ${e.localizedMessage ?: e.javaClass.simpleName}")
                     }
                 }
-                if (count % 25L == 0L) {
+                if (becameActive || count % 25L == 0L) {
+                    if (becameActive) {
+                        statusText = "Recibiendo audio en sala $roomCode"
+                    }
                     broadcastState()
                 }
             }
@@ -439,6 +447,7 @@ class AudioBridgeService : Service() {
     }
 
     private fun broadcastState() {
+        currentSenderConnected = senderConnectedFlag.get()
         currentStatusText = statusText
         currentRttMs = lastRttMs
         currentPackets = packetsCounter.get()
@@ -475,6 +484,7 @@ class AudioBridgeService : Service() {
         isConnectedFlag.set(false)
         currentIsConnected = false
         senderConnectedFlag.set(false)
+        currentSenderConnected = false
         if (wakeLock?.isHeld == true) {
             wakeLock?.release()
         }

@@ -298,7 +298,7 @@ async function checkServerReachability(rawUrl, mode = targetMode) {
     serverStatusEl.textContent =
       mode === 'direct'
         ? `No responde ${baseUrl}${errDetail}. Abre WaveBridge en Android y pulsa Buscar móvil (o usa Puente PC Plan B).`
-        : `Puente local apagado${errDetail}. Ejecuta "python3 bridge.py" (Plan B) o "npm start" (Plan C).`;
+        : `Puente local apagado${errDetail}. Ejecuta "python3 bridge.py" (Plan B) o "npm run web" (Plan C).`;
     return false;
   }
 }

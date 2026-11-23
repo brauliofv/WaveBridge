@@ -320,7 +320,8 @@ async function startServer(): Promise<void> {
     ws.on('error', () => removeClient(ws));
   });
 
-  if (process.env.NODE_ENV !== 'production') {
+  const isProd = process.env.NODE_ENV === 'production' || process.argv.includes('--prod');
+  if (!isProd) {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },

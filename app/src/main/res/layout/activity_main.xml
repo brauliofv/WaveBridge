@@ -240,10 +240,10 @@
                     android:layout_width="match_parent"
                     android:layout_height="52dp"
                     android:layout_marginTop="16dp"
-                    android:backgroundTint="#0EA5E9"
+                    android:backgroundTint="#10B981"
                     android:text="Iniciar receptor Wi-Fi"
                     android:textAllCaps="false"
-                    android:textColor="#06121A"
+                    android:textColor="#042F2E"
                     android:textSize="15sp"
                     android:textStyle="bold"
                     app:cornerRadius="12dp" />
@@ -252,13 +252,14 @@
 
         <!-- Telemetry & Controls Card -->
         <com.google.android.material.card.MaterialCardView
+            android:id="@+id/cardTelemetry"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="14dp"
             app:cardBackgroundColor="#13171D"
             app:cardCornerRadius="16dp"
             app:strokeColor="#1F2630"
-            app:strokeWidth="1dp">
+            app:strokeWidth="2dp">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -267,9 +268,23 @@
                 android:padding="16dp">
 
                 <TextView
+                    android:id="@+id/tvStateBadge"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="#1F2630"
+                    android:paddingHorizontal="10dp"
+                    android:paddingVertical="4dp"
+                    android:text="● INACTIVO"
+                    android:textColor="#9CA3AF"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:typeface="monospace" />
+
+                <TextView
                     android:id="@+id/tvConnectionStatus"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
                     android:text="Desconectado"
                     android:textColor="#F4F5F7"
                     android:textSize="16sp"
@@ -329,7 +344,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="v1.0.3 · 2026-11-22"
+                android:text="v1.0.4 · 2026-11-22"
                 android:textColor="#6B7280"
                 android:textSize="11sp"
                 android:typeface="monospace" />

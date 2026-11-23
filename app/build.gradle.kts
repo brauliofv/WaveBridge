@@ -11,8 +11,8 @@ android {
         applicationId = "com.wavebridge.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "1.0.3"
+        versionCode = 5
+        versionName = "1.0.4"
         buildConfigField("String", "BUILD_DATE", "\"2026-11-22\"")
     }
 

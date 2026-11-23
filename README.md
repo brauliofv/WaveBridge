@@ -8,8 +8,8 @@
 >   - **Linux (prioritario):** `python3 bridge.py` *(si el firewall bloquea el puerto, abre una vez: `sudo ufw allow 3000/tcp`)*
 >   - **Windows:** `py bridge.py` *(o `python bridge.py`)*
 > - **Plan C — Interfaz Web completa con Node.js / `npm` (última opción):**
->   - **Linux:** `sudo apt update && sudo apt install -y nodejs npm` *(si no tienes `npm`)* y luego `npm install && npm run build && npm start`
->   - **Windows (con Node.js LTS):** `npm install && npm run build && npm start`
+>   - **Linux:** `sudo apt update && sudo apt install -y nodejs npm` *(si no tienes `npm`)* y luego `npm install && npm run build && npm run web`
+>   - **Windows (con Node.js LTS):** `npm install && npm run build && npm run web`
 
 **WaveBridge** convierte tu smartphone Android en un receptor inalámbrico de baja latencia para tu laptop o PC sin Bluetooth. Captura el audio de **todo el navegador Chrome** (todas tus pestañas, notificaciones, YouTube, Spotify) o de una sola pestaña, y envíalo **100% dentro de tu Wi-Fi local (sin pasar por la nube)** directamente a los audífonos Bluetooth emparejados con tu teléfono.
 
@@ -34,7 +34,7 @@ PLAN B (Puente Python ligero sin dependencias):
 [Extensión Chrome] ──▶ [python3 bridge.py (:3000)] ──(Wi-Fi Local)──▶ [App Android] ──▶ [Bluetooth]
 
 PLAN C (Última opción: Interfaz Web Node.js + QR o Extensión):
-[Consola Web http://localhost:3000 / Extensión] ──▶ [npm start (:3000)] ──▶ [App Android o Web QR] ──▶ [Bluetooth]
+[Consola Web http://localhost:3000 / Extensión] ──▶ [npm run web (:3000)] ──▶ [App Android o Web QR] ──▶ [Bluetooth]
 ```
 
 ---
@@ -99,15 +99,16 @@ Si prefieres ejecutar toda la interfaz web (para emitir directamente sin usar ex
    ```bash
    npm install
    npm run build
-   npm start
+   npm run web
    ```
+   *(El repositorio ya incluye `.npmrc` con `legacy-peer-deps=true`; si usas una versión antigua de `npm`, también puedes usar `npm install --legacy-peer-deps`. Como alternativa directa sin compilar, también funciona `npm run dev`.)*
 3. Abre `http://localhost:3000` en Chrome (pestaña **Emisor PC**) y escanea el código **QR** desde tu smartphone (o usa la app Android en **Puente PC** hacia la IP que imprime la terminal).
 
 ---
 
 ## Reporte rápido de errores y versión
 
-- Tanto la **App Android** como la **Extensión** y la **Interfaz Web** muestran la versión actual (`v1.0.3`) y la fecha junto al botón **Reportar error** / **Diagnóstico**.
+- Tanto la **App Android** (`v1.0.4`) como la **Extensión** (`v1.0.3`) y la **Interfaz Web** (`v1.0.4`) muestran la versión actual y la fecha junto al botón **Reportar error** / **Diagnóstico**.
 - Al pulsarlo se copia/comparte automáticamente el detalle técnico completo para diagnosticar cualquier problema de red o captura.
 
 ---
