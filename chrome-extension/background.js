@@ -3,8 +3,8 @@ async function ensureOffscreen() {
   if (!existing) {
     await chrome.offscreen.createDocument({
       url: 'offscreen.html',
-      reasons: ['USER_MEDIA', 'WEB_RTC'],
-      justification: 'Streaming de audio en tiempo real por WebRTC/WebSocket hacia el smartphone.',
+      reasons: ['USER_MEDIA', 'DISPLAY_MEDIA', 'WEB_RTC'],
+      justification: 'Streaming de audio del navegador por WebRTC/WebSocket hacia el smartphone.',
     });
   }
 }
@@ -31,8 +31,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       });
     return true;
   }
-  if (msg.type === 'STOP_CAPTURE') {
-    chrome.runtime.sendMessage({ type: 'OFFSCREEN_STOP', target: 'offscreen' });
+  if (msg.type === 'STOP_CAPTURE' || msg.type === 'CAPTURE_ENDED') {
+    if (msg.type === 'STOP_CAPTURE') {
+      chrome.runtime.sendMessage({ type: 'OFFSCREEN_STOP', target: 'offscreen' });
+    }
     chrome.storage.local.set({ streaming: false });
     sendResponse({ ok: true });
   }

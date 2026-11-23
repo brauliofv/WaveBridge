@@ -27,7 +27,7 @@ export interface SenderStatus {
 }
 
 const SOURCE_LABELS: Record<AudioSourceType, string> = {
-  tab: 'Pestaña del navegador / Sistema',
+  tab: 'Todo el navegador / Sistema',
   synth: 'Generador estéreo de prueba',
   mic: 'Micrófono / Entrada de línea',
 };
@@ -451,6 +451,8 @@ export function useAudioSender(initialRoomCode?: string) {
               noiseSuppression: false,
               autoGainControl: false,
             },
+            // @ts-expect-error systemAudio is supported in Chromium getDisplayMedia
+            systemAudio: 'include',
           });
           // Stop video track immediately so we only keep audio bandwidth & CPU low
           stream.getVideoTracks().forEach((vt) => vt.stop());
@@ -458,7 +460,7 @@ export function useAudioSender(initialRoomCode?: string) {
           if (audioTracks.length === 0) {
             stream.getTracks().forEach((t) => t.stop());
             throw new Error(
-              'No marcaste la casilla "Compartir audio de la pestaña" en el diálogo de Chrome.'
+              'No marcaste "Compartir también el audio del sistema" (o audio de pestaña) en el diálogo de Chrome.'
             );
           }
           captureStreamRef.current = stream;

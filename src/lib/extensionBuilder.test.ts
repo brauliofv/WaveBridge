@@ -19,6 +19,7 @@ test('buildChromeExtensionFiles produces valid MV3 manifest and offscreen files'
   assert.ok(manifestFile);
   const manifest = JSON.parse(manifestFile.content);
   assert.equal(manifest.manifest_version, 3);
+  assert.ok(manifest.permissions.includes('desktopCapture'));
   assert.ok(manifest.permissions.includes('tabCapture'));
   assert.ok(manifest.permissions.includes('offscreen'));
   assert.deepEqual(manifest.host_permissions, ['https://wavebridge.local:3000/*']);

@@ -290,7 +290,7 @@ class AudioBridgeService : Service() {
                     .build()
             )
             .setAudioFormat(
-                AudioFormat.AudioFormatBuilder()
+                AudioFormat.Builder()
                     .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
                     .setSampleRate(sampleRate)
                     .setChannelMask(channelMask)

@@ -95,8 +95,8 @@ export function SenderView({
   const sources: { id: AudioSourceType; title: string; detail: string; icon: typeof MonitorSpeaker }[] = [
     {
       id: 'tab',
-      title: 'Pestaña de Chrome',
-      detail: 'YouTube, Spotify Web, Netflix o cualquier pestaña con audio',
+      title: 'Todo el navegador / PC',
+      detail: 'Todas tus pestañas, notificaciones, YouTube y Spotify a la vez',
       icon: MonitorSpeaker,
     },
     {

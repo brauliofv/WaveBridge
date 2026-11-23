@@ -56,10 +56,10 @@
 
 ### 3. Conectar y escuchar en tiempo real
 
-1. Abre la pestaña en Chrome donde quieras reproducir música o video, haz clic en el icono de la extensión **WaveBridge**, verifica la URL del servidor puente y anota tu **código de sala de 6 caracteres**.
-2. Pulsa **Transmitir pestaña activa**.
+1. Haz clic en el icono de la extensión **WaveBridge**, verifica la URL del servidor puente y anota tu **código de sala de 6 caracteres**.
+2. Selecciona **Todo el navegador** (recomendado para escuchar todas tus pestañas, notificaciones, YouTube y Spotify a la vez sin cambiar de pestaña) y pulsa **Transmitir todo el navegador**. En la ventana de Chrome elige **Pantalla completa** y marca la casilla **Compartir también el audio del sistema**. *(Si solo quieres aislar una pestaña, elige **Solo esta pestaña**).*
 3. Abre la app **WaveBridge** en tu Android, ingresa el mismo código de sala (y la misma URL del servidor puente) y pulsa **Conectar al emisor**.
-4. ¡Listo! El audio del navegador sonará en tus audífonos inalámbricos. Puedes bloquear la pantalla del teléfono y el servicio en segundo plano mantendrá la reproducción activa.
+4. ¡Listo! Todo el audio del navegador sonará en tus audífonos inalámbricos aunque trabajes cambiando entre muchas pestañas. Puedes bloquear la pantalla del teléfono y el servicio en segundo plano mantendrá la reproducción activa.
 
 ---
 

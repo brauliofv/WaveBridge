@@ -5,6 +5,10 @@ let seq = 0;
 const peers = new Map();
 let activeReceivers = [];
 
+function reportError(message) {
+  chrome.runtime.sendMessage({ type: 'LOG_ERROR', message });
+}
+
 function encodeAudioPacket(samples, packetSeq, timestampMs, sampleRate, channels) {
   const headerBytes = 16;
   const buffer = new ArrayBuffer(headerBytes + samples.length * 2);
@@ -26,10 +30,6 @@ function encodeAudioPacket(samples, packetSeq, timestampMs, sampleRate, channels
   return buffer;
 }
 
-function reportError(message) {
-  chrome.runtime.sendMessage({ type: 'LOG_ERROR', message });
-}
-
 chrome.runtime.onMessage.addListener(async (msg) => {
   if (msg.target !== 'offscreen') return;
   if (msg.type === 'OFFSCREEN_STOP') {
@@ -39,18 +39,56 @@ chrome.runtime.onMessage.addListener(async (msg) => {
   if (msg.type === 'START_CAPTURE') {
     cleanup();
     try {
-      activeStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          mandatory: {
-            chromeMediaSource: 'tab',
-            chromeMediaSourceId: msg.streamId,
+      if (msg.sourceKind === 'desktop') {
+        activeStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            mandatory: {
+              chromeMediaSource: 'desktop',
+              chromeMediaSourceId: msg.streamId,
+            },
           },
-        },
-        video: false,
-      });
+          video: {
+            mandatory: {
+              chromeMediaSource: 'desktop',
+              chromeMediaSourceId: msg.streamId,
+              maxWidth: 16,
+              maxHeight: 16,
+              maxFrameRate: 1,
+            },
+          },
+        });
+        activeStream.getVideoTracks().forEach((vt) => vt.stop());
+      } else {
+        activeStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            mandatory: {
+              chromeMediaSource: 'tab',
+              chromeMediaSourceId: msg.streamId,
+            },
+          },
+          video: false,
+        });
+      }
+
+      const audioTracks = activeStream.getAudioTracks();
+      if (audioTracks.length === 0) {
+        reportError('No se recibió pista de audio. Marca "Compartir también el audio del sistema".');
+        cleanup();
+        chrome.runtime.sendMessage({ type: 'CAPTURE_ENDED' });
+        return;
+      }
+
+      audioTracks[0].onended = () => {
+        cleanup();
+        chrome.runtime.sendMessage({ type: 'CAPTURE_ENDED' });
+      };
 
       audioCtx = new AudioContext({ latencyHint: 'interactive', sampleRate: 48000 });
       const src = audioCtx.createMediaStreamSource(activeStream);
+      if (msg.sourceKind !== 'desktop') {
+        src.connect(audioCtx.destination);
+      }
+
       const processor = audioCtx.createScriptProcessor(1024, 2, 2);
       const silentSink = audioCtx.createGain();
       silentSink.gain.value = 0;
@@ -84,7 +122,7 @@ chrome.runtime.onMessage.addListener(async (msg) => {
             type: 'join',
             room: msg.roomCode,
             role: 'sender',
-            deviceName: 'Extensión Chrome',
+            deviceName: msg.sourceKind === 'desktop' ? 'Chrome Todo el Navegador' : 'Extensión Chrome',
           })
         );
         socket.send(
@@ -93,7 +131,7 @@ chrome.runtime.onMessage.addListener(async (msg) => {
             state: {
               active: true,
               source: 'tab',
-              sourceLabel: 'Pestaña de Chrome (Extensión)',
+              sourceLabel: msg.sourceKind === 'desktop' ? 'Todo el navegador / Sistema' : 'Pestaña de Chrome',
               codec: 'opus-256',
               latencyPreset: 'balanced',
               sampleRate: audioCtx.sampleRate,
@@ -154,6 +192,7 @@ chrome.runtime.onMessage.addListener(async (msg) => {
       };
     } catch (err) {
       reportError(`offscreen capture: ${err?.message || String(err)}`);
+      chrome.runtime.sendMessage({ type: 'CAPTURE_ENDED' });
     }
   }
 });
