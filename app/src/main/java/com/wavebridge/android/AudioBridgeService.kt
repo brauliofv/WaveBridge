@@ -76,6 +76,9 @@ class AudioBridgeService : Service() {
 
     private val client = OkHttpClient.Builder()
         .pingInterval(15, TimeUnit.SECONDS)
+        .connectTimeout(8, TimeUnit.SECONDS)
+        .followRedirects(false)
+        .followSslRedirects(false)
         .build()
 
     private var webSocket: WebSocket? = null
@@ -236,9 +239,19 @@ class AudioBridgeService : Service() {
                 isConnectedFlag.set(false)
                 currentIsConnected = false
                 senderConnectedFlag.set(false)
-                val detail = t.localizedMessage ?: t.javaClass.simpleName
-                statusText = "Error de conexión: $detail"
-                recordError("WebSocket: $detail")
+                val httpCode = response?.code
+                val rawMsg = t.localizedMessage ?: t.javaClass.simpleName
+                statusText = when {
+                    httpCode == 404 ->
+                        "HTTP 404: Servidor no publicado en esta URL. Publica la app o usa tu IP Wi-Fi local (ej. http://192.168.1.50:3000)."
+                    httpCode != null && httpCode in listOf(301, 302, 303, 307, 308, 401, 403) ->
+                        "Esta URL exige inicio de sesión (HTTP $httpCode). Usa tu IP Wi-Fi local o la URL pública."
+                    t is java.net.ConnectException || t is java.net.UnknownHostException || t is java.net.SocketTimeoutException ->
+                        "No se pudo conectar con $wsUrl. Verifica la red Wi-Fi y que el puente esté iniciado."
+                    else ->
+                        "Error de conexión: $rawMsg"
+                }
+                recordError("WebSocket ($wsUrl) [HTTP ${httpCode ?: "-"}]: $rawMsg")
                 broadcastState()
             }
 

@@ -1,11 +1,11 @@
 import 'dotenv/config';
 import crypto from 'node:crypto';
 import http from 'node:http';
+import os from 'node:os';
 import path from 'node:path';
 import express from 'express';
-import { createServer as createViteServer } from 'vite';
 import { WebSocket, WebSocketServer } from 'ws';
-import { normalizeRoomCode, isValidRoomCode } from './src/lib/bridgeProtocol';
+import { normalizeRoomCode, isValidRoomCode } from './src/lib/bridgeProtocol.ts';
 
 interface PeerClient {
   id: string;
@@ -25,7 +25,34 @@ interface AudioRoom {
   streamState: Record<string, unknown> | null;
 }
 
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
+
+function isPrivateLanIp(ip: string): boolean {
+  if (ip.startsWith('169.254.')) return false;
+  if (ip.startsWith('192.168.') || ip.startsWith('10.')) return true;
+  const parts = ip.split('.').map(Number);
+  return parts.length === 4 && parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31;
+}
+
+function getLanUrls(port: number): string[] {
+  const interfaces = os.networkInterfaces();
+  const preferred: string[] = [];
+  const other: string[] = [];
+  for (const entries of Object.values(interfaces)) {
+    if (!entries) continue;
+    for (const info of entries) {
+      if (info.family === 'IPv4' && !info.internal && !info.address.startsWith('169.254.')) {
+        const url = `http://${info.address}:${port}`;
+        if (isPrivateLanIp(info.address)) {
+          preferred.push(url);
+        } else {
+          other.push(url);
+        }
+      }
+    }
+  }
+  return Array.from(new Set([...preferred, ...other]));
+}
 const rooms = new Map<string, AudioRoom>();
 const clientMap = new Map<WebSocket, PeerClient>();
 
@@ -114,11 +141,27 @@ async function startServer(): Promise<void> {
   const app = express();
   app.use(express.json());
 
+  app.use('/api', (_req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    next();
+  });
+
   app.get('/api/health', (_req, res) => {
     res.json({
       ok: true,
+      service: 'wavebridge',
       activeRooms: rooms.size,
       connectedPeers: clientMap.size,
+    });
+  });
+
+  app.get('/api/network-info', (_req, res) => {
+    res.json({
+      port: PORT,
+      lanUrls: getLanUrls(PORT),
+      appUrl: process.env.APP_URL || null,
     });
   });
 
@@ -277,6 +320,7 @@ async function startServer(): Promise<void> {
   });
 
   if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',

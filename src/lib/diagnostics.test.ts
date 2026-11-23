@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { APP_RELEASE_DATE, APP_VERSION, EXTENSION_RELEASE_DATE, EXTENSION_VERSION } from './appMeta';
 import {
   appendDiagnosticEntry,
   formatDiagnosticReport,
@@ -38,8 +39,8 @@ test('formatDiagnosticReport formats version, date, state, and captured errors',
     userNote: 'Falló al capturar YouTube',
   });
 
-  assert.ok(report.includes('App: v1.0.0 (2026-11-22)'));
-  assert.ok(report.includes('Extensión: v1.0.0 (2026-11-22)'));
+  assert.ok(report.includes(`App: v${APP_VERSION} (${APP_RELEASE_DATE})`));
+  assert.ok(report.includes(`Extensión: v${EXTENSION_VERSION} (${EXTENSION_RELEASE_DATE})`));
   assert.ok(report.includes('Permiso de pestaña denegado'));
   assert.ok(report.includes('NotAllowedError'));
   assert.ok(report.includes('Falló al capturar YouTube'));

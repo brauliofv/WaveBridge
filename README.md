@@ -63,16 +63,23 @@
 
 ---
 
-## Uso en red Wi-Fi local (Máxima velocidad y mínima latencia)
+## Uso en red Wi-Fi local (Recomendado: mínima latencia y sin depender de la nube)
 
-Para obtener la latencia más baja posible (recomendado para ver videos o películas sin desfase labial), ejecuta el servidor puente directamente en tu laptop dentro de la misma red Wi-Fi 5 GHz que tu smartphone:
+Para obtener la latencia más baja posible (recomendado para video, clases o notificaciones sin depender de servidores externos), ejecuta el servidor puente directamente en tu laptop dentro de la misma red Wi-Fi que tu smartphone:
 
 ```bash
 npm install
-npm run dev
+npm run build
+npm start
 ```
 
-El servidor quedará escuchando en el puerto `3000`. Luego usa la IP local de tu laptop (por ejemplo `http://192.168.1.50:3000`) tanto en el campo **Servidor puente** de la extensión de Chrome como en la app Android.
+El servidor quedará escuchando en el puerto `3000`. Luego:
+1. En la **extensión de Chrome**, pulsa **Wi-Fi Local (:3000)** (`http://localhost:3000`).
+2. En la **app Android**, pulsa **Wi-Fi Local** e ingresa la IP de tu laptop en el router (por ejemplo `http://192.168.1.50:3000`).
+
+> **¿Ves HTTP 404 o error de WebSocket con `ais-pre` / `ais-dev`?**
+> - `ais-dev-...` es una URL privada de vista previa protegida por sesión de Google; Chrome externo y Android no pueden conectarse por WebSocket a esa URL.
+> - `ais-pre-...` solo responde cuando la app está publicada/compartida en la nube; si aún no se ha publicado devolverá `HTTP 404`. Usar el puente **Wi-Fi Local (`npm start`)** resuelve ambos casos al instante.
 
 ---
 

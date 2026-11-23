@@ -127,6 +127,44 @@
                     android:textColorHint="#4B5563"
                     android:textSize="13sp" />
 
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:orientation="horizontal">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnPresetLocal"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="38dp"
+                        android:layout_marginEnd="6dp"
+                        android:layout_weight="1"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp"
+                        android:text="Wi-Fi Local"
+                        android:textAllCaps="false"
+                        android:textColor="#9CA3AF"
+                        android:textSize="11sp"
+                        app:cornerRadius="8dp"
+                        app:strokeColor="#2A323D" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnPresetCloud"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="38dp"
+                        android:layout_weight="1"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp"
+                        android:text="Nube (ais-pre)"
+                        android:textAllCaps="false"
+                        android:textColor="#9CA3AF"
+                        android:textSize="11sp"
+                        app:cornerRadius="8dp"
+                        app:strokeColor="#2A323D" />
+                </LinearLayout>
+
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnConnect"
                     android:layout_width="match_parent"

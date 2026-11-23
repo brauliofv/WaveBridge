@@ -52,7 +52,7 @@ export function ExtensionStudioView() {
             Extensión de Chrome (Manifest V3) y App Android
           </h1>
           <p className="mt-1.5 text-sm text-[#9CA3AF] max-w-2xl">
-            Código completo listo para cargar en Chrome usando <code className="font-mono text-[#F4F5F7]">chrome.tabCapture</code> y documento offscreen, preconfigurado hacia este servidor puente.{' '}
+            Código completo listo para cargar en Chrome usando <code className="font-mono text-[#F4F5F7]">chrome.desktopCapture</code> (todo el navegador), <code className="font-mono text-[#F4F5F7]">chrome.tabCapture</code> y documento offscreen, con selector editable de servidor puente (Wi-Fi Local o Nube).{' '}
             <span className="font-mono text-xs text-[#6B7280] tabular-nums">
               v{EXTENSION_VERSION} · {EXTENSION_RELEASE_DATE}
             </span>

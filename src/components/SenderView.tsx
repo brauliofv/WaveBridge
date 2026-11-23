@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import {
+  AlertTriangle,
   Check,
   Copy,
   Headphones,
@@ -56,11 +57,34 @@ export function SenderView({
 }: SenderViewProps) {
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [copiedField, setCopiedField] = useState<'code' | 'url' | null>(null);
+  const [lanUrls, setLanUrls] = useState<string[]>([]);
 
-  const receiverUrl =
-    typeof window !== 'undefined'
-      ? buildReceiverUrl(window.location.origin, status.roomCode)
-      : '';
+  useEffect(() => {
+    let active = true;
+    fetch('/api/network-info')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (active && data && Array.isArray(data.lanUrls)) {
+          setLanUrls(data.lanUrls);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+  const isPrivatePreview = currentOrigin.includes('ais-dev-');
+  const isLocalhost =
+    typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+  const effectiveBridgeOrigin =
+    isLocalhost && lanUrls.length > 0 ? lanUrls[0] : currentOrigin;
+
+  const receiverUrl = effectiveBridgeOrigin
+    ? buildReceiverUrl(effectiveBridgeOrigin, status.roomCode)
+    : '';
 
   useEffect(() => {
     if (!receiverUrl) return;
@@ -215,6 +239,23 @@ export function SenderView({
               </div>
             </div>
           </div>
+
+          {isPrivatePreview ? (
+            <div className="rounded-xl border border-[#F59E0B]/30 bg-[#F59E0B]/10 p-3.5 text-xs text-[#FDE68A] leading-relaxed flex items-start gap-2.5">
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-[#F59E0B]" aria-hidden="true" />
+              <div>
+                <strong className="font-semibold text-[#FEF3C7]">Vista previa privada (ais-dev):</strong>{' '}
+                Android y la extensión externa no pueden conectarse a esta URL porque exige sesión de Google. Publica la app para activar <code className="font-mono">ais-pre</code> o ejecuta <code className="font-mono">npm start</code> en tu laptop para usar Wi-Fi local.
+              </div>
+            </div>
+          ) : (
+            effectiveBridgeOrigin && (
+              <div className="rounded-xl border border-white/10 bg-[#0B0D10] px-3.5 py-2.5 text-xs text-[#9CA3AF] flex flex-wrap items-center justify-between gap-2">
+                <span>Servidor puente para la app:</span>
+                <code className="font-mono text-[#F4F5F7]">{effectiveBridgeOrigin}</code>
+              </div>
+            )
+          )}
 
           {/* Connected Receivers List */}
           <div>

@@ -8,9 +8,23 @@ export interface ExtensionFile {
   content: string;
 }
 
+const CLOUD_BRIDGE_FALLBACK = 'https://ais-pre-eqopg3zyc7utrib2ilmkpk-197474785049.us-west2.run.app';
+const LOCAL_BRIDGE_DEFAULT = 'http://localhost:3000';
+
+export function resolveSafeDefaultBridgeOrigin(bridgeOrigin: string): string {
+  const clean = bridgeOrigin.trim().replace(/\/+$/, '');
+  if (!clean || clean.includes('ais-dev-')) {
+    return LOCAL_BRIDGE_DEFAULT;
+  }
+  return clean;
+}
+
 export function buildChromeExtensionFiles(bridgeOrigin: string): ExtensionFile[] {
-  const normalizedOrigin = bridgeOrigin.replace(/\/+$/, '');
-  const wsOrigin = normalizedOrigin.replace(/^http/i, 'ws');
+  const defaultOrigin = resolveSafeDefaultBridgeOrigin(bridgeOrigin);
+  const cloudOrigin =
+    defaultOrigin.startsWith('https://') && !defaultOrigin.includes('localhost')
+      ? defaultOrigin
+      : CLOUD_BRIDGE_FALLBACK;
 
   const manifest = {
     manifest_version: 3,
@@ -19,7 +33,7 @@ export function buildChromeExtensionFiles(bridgeOrigin: string): ExtensionFile[]
     description:
       'Captura todo el audio del navegador (todas las pestañas y notificaciones) o una pestaña específica y lo transmite por Wi-Fi a tu smartphone Android.',
     permissions: ['desktopCapture', 'tabCapture', 'activeTab', 'offscreen', 'storage'],
-    host_permissions: [`${normalizedOrigin}/*`],
+    host_permissions: ['http://*/*', 'https://*/*'],
     action: {
       default_popup: 'popup.html',
       default_title: 'WaveBridge Emisor',
@@ -36,7 +50,7 @@ export function buildChromeExtensionFiles(bridgeOrigin: string): ExtensionFile[]
     <title>WaveBridge Emisor</title>
     <style>
       body {
-        width: 330px;
+        width: 340px;
         margin: 0;
         padding: 16px;
         background: #0b0d10;
@@ -67,11 +81,47 @@ export function buildChromeExtensionFiles(bridgeOrigin: string): ExtensionFile[]
         border: 1px solid #232933;
         background: #13171d;
         color: #f4f5f7;
+        font-size: 12px;
+        margin-bottom: 6px;
+      }
+      input.code {
         font-family: monospace;
         font-size: 15px;
         letter-spacing: 0.14em;
         text-transform: uppercase;
         margin-bottom: 10px;
+      }
+      .presets {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 8px;
+      }
+      .preset-btn {
+        flex: 1;
+        padding: 5px 8px;
+        border-radius: 6px;
+        border: 1px solid #232933;
+        background: #13171d;
+        color: #9ca3af;
+        font-size: 10px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .preset-btn:hover {
+        border-color: #38bdf8;
+        color: #f4f5f7;
+      }
+      .server-status {
+        margin-bottom: 10px;
+        font-size: 11px;
+        line-height: 1.35;
+        color: #9ca3af;
+      }
+      .server-status.ok {
+        color: #10b981;
+      }
+      .server-status.err {
+        color: #f87171;
       }
       .modes {
         display: grid;
@@ -121,12 +171,8 @@ export function buildChromeExtensionFiles(bridgeOrigin: string): ExtensionFile[]
         color: #38bdf8;
         line-height: 1.4;
       }
-      .link {
-        display: block;
-        margin-top: 10px;
-        font-size: 11px;
-        color: #38bdf8;
-        text-decoration: none;
+      .status.err {
+        color: #f87171;
       }
       .footer {
         margin-top: 14px;
@@ -161,14 +207,22 @@ export function buildChromeExtensionFiles(bridgeOrigin: string): ExtensionFile[]
       <button id="modeTabBtn" class="mode-btn" type="button">Solo esta pestaña</button>
     </div>
 
+    <label for="serverUrl">Servidor puente (Wi-Fi Local o Nube pública)</label>
+    <input id="serverUrl" type="url" placeholder="http://localhost:3000" />
+    <div class="presets">
+      <button id="presetLocalBtn" class="preset-btn" type="button">Wi-Fi Local (:3000)</button>
+      <button id="presetCloudBtn" class="preset-btn" type="button">Nube (ais-pre)</button>
+      <button id="checkServerBtn" class="preset-btn" type="button">Probar</button>
+    </div>
+    <div id="serverStatus" class="server-status">Verificando servidor puente...</div>
+
     <label for="roomCode">Código de sala (6 caracteres)</label>
-    <input id="roomCode" maxlength="6" placeholder="WVB492" />
+    <input id="roomCode" class="code" maxlength="6" placeholder="WVB492" />
+
     <button id="toggleBtn" class="primary">Transmitir todo el navegador</button>
-    <div id="hint" class="hint">Elige "Pantalla completa" y marca "Compartir también el audio del sistema" para escuchar todas las pestañas.</div>
+    <div id="hint" class="hint">Elige "Pantalla completa" y marca "Compartir también el audio del sistema" para escuchar todas tus pestañas y notificaciones.</div>
     <div id="status" class="status">Listo para capturar audio</div>
-    <a class="link" href="${normalizedOrigin}/?mode=receiver" target="_blank" rel="noreferrer">
-      Abrir receptor móvil en navegador
-    </a>
+
     <div class="footer">
       <span id="versionMeta">v${EXTENSION_VERSION} · ${EXTENSION_RELEASE_DATE}</span>
       <button id="copyDiagBtn" class="diag-btn" type="button">Reportar error</button>
@@ -177,7 +231,16 @@ export function buildChromeExtensionFiles(bridgeOrigin: string): ExtensionFile[]
   </body>
 </html>`;
 
-  const popupJs = `const EXT_BUILD_DATE = '${EXTENSION_RELEASE_DATE}';
+  const popupJs = `const DEFAULT_SERVER_URL = '${defaultOrigin}';
+const LOCAL_SERVER_URL = '${LOCAL_BRIDGE_DEFAULT}';
+const CLOUD_SERVER_URL = '${cloudOrigin}';
+const EXT_BUILD_DATE = '${EXTENSION_RELEASE_DATE}';
+
+const serverInput = document.getElementById('serverUrl');
+const presetLocalBtn = document.getElementById('presetLocalBtn');
+const presetCloudBtn = document.getElementById('presetCloudBtn');
+const checkServerBtn = document.getElementById('checkServerBtn');
+const serverStatusEl = document.getElementById('serverStatus');
 const roomInput = document.getElementById('roomCode');
 const toggleBtn = document.getElementById('toggleBtn');
 const statusEl = document.getElementById('status');
@@ -201,11 +264,89 @@ function randomCode() {
   return out;
 }
 
+function normalizeHttpUrl(rawUrl) {
+  const clean = (rawUrl || '').trim().replace(/\\/+$/, '');
+  if (!clean) return DEFAULT_SERVER_URL;
+  if (clean.startsWith('http://') || clean.startsWith('https://')) return clean;
+  if (clean.startsWith('ws://')) return 'http://' + clean.slice(5);
+  if (clean.startsWith('wss://')) return 'https://' + clean.slice(6);
+  return 'http://' + clean;
+}
+
+function toWebSocketUrl(rawUrl) {
+  const clean = normalizeHttpUrl(rawUrl);
+  const wsBase = clean.replace(/^http/i, 'ws');
+  return wsBase.endsWith('/ws') ? wsBase : wsBase + '/ws';
+}
+
 async function logExtensionError(message) {
   const data = await chrome.storage.local.get(['errorLogs']);
   const logs = Array.isArray(data.errorLogs) ? data.errorLogs : [];
   logs.push('[' + new Date().toISOString() + '] ' + message);
   await chrome.storage.local.set({ errorLogs: logs.slice(-15) });
+  copyDiagBtn.textContent = 'Diagnóstico (' + Math.min(logs.length, 15) + ')';
+}
+
+async function checkServerReachability(rawUrl) {
+  const baseUrl = normalizeHttpUrl(rawUrl);
+  if (baseUrl.includes('ais-dev-')) {
+    serverStatusEl.className = 'server-status err';
+    serverStatusEl.textContent =
+      'URL privada (ais-dev) bloqueada por login. Usa Wi-Fi Local (:3000) o publica la app.';
+    return false;
+  }
+
+  serverStatusEl.className = 'server-status';
+  serverStatusEl.textContent = 'Probando conexión con el puente...';
+
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3500);
+    const res = await fetch(baseUrl + '/api/health', {
+      method: 'GET',
+      redirect: 'manual',
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+
+    if (res.type === 'opaqueredirect' || res.status === 302 || res.status === 401 || res.status === 403) {
+      serverStatusEl.className = 'server-status err';
+      serverStatusEl.textContent =
+        'La URL exige autenticación (HTTP ' + (res.status || 302) + '). Usa Wi-Fi Local o publicación pública.';
+      return false;
+    }
+
+    if (res.status === 404) {
+      serverStatusEl.className = 'server-status err';
+      serverStatusEl.textContent =
+        'HTTP 404: El servidor aún no está publicado en esta URL. Usa Wi-Fi Local ("npm start").';
+      return false;
+    }
+
+    if (!res.ok) {
+      serverStatusEl.className = 'server-status err';
+      serverStatusEl.textContent = 'El servidor respondió HTTP ' + res.status + '.';
+      return false;
+    }
+
+    const json = await res.json();
+    if (json && json.ok) {
+      serverStatusEl.className = 'server-status ok';
+      serverStatusEl.textContent = 'Puente operativo (' + (json.activeRooms ?? 0) + ' salas activas).';
+      return true;
+    }
+
+    serverStatusEl.className = 'server-status err';
+    serverStatusEl.textContent = 'Respuesta inesperada del servidor puente.';
+    return false;
+  } catch {
+    serverStatusEl.className = 'server-status err';
+    serverStatusEl.textContent =
+      baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1') || baseUrl.includes('192.168.')
+        ? 'No responde en red local. Ejecuta "npm start" en tu laptop.'
+        : 'No se pudo contactar con el servidor puente.';
+    return false;
+  }
 }
 
 function setMode(mode) {
@@ -214,67 +355,135 @@ function setMode(mode) {
   modeTabBtn.className = captureMode === 'tab' ? 'mode-btn active' : 'mode-btn';
   hintEl.textContent =
     captureMode === 'desktop'
-      ? 'Elige "Pantalla completa" y marca "Compartir también el audio del sistema" para escuchar todas las pestañas y notificaciones.'
+      ? 'Elige "Pantalla completa" y marca "Compartir también el audio del sistema" para escuchar todas tus pestañas y notificaciones.'
       : 'Captura únicamente el audio de la pestaña actual aunque cambies de ventana.';
-  chrome.storage.local.get(['streaming'], (data) => updateUi(Boolean(data.streaming)));
+  chrome.storage.local.get(['streaming', 'lastError'], (data) =>
+    updateUi(Boolean(data.streaming), data.lastError || '')
+  );
 }
 
 modeDesktopBtn.addEventListener('click', () => setMode('desktop'));
 modeTabBtn.addEventListener('click', () => setMode('tab'));
 
-chrome.storage.local.get(['roomCode', 'streaming', 'captureMode', 'errorLogs'], (data) => {
-  roomInput.value = data.roomCode || randomCode();
-  captureMode = data.captureMode === 'tab' ? 'tab' : 'desktop';
-  setMode(captureMode);
-  updateUi(Boolean(data.streaming));
-  if (Array.isArray(data.errorLogs) && data.errorLogs.length > 0) {
-    copyDiagBtn.textContent = 'Diagnóstico (' + data.errorLogs.length + ')';
+presetLocalBtn.addEventListener('click', async () => {
+  serverInput.value = LOCAL_SERVER_URL;
+  await chrome.storage.local.set({ serverUrl: LOCAL_SERVER_URL });
+  checkServerReachability(LOCAL_SERVER_URL);
+});
+
+presetCloudBtn.addEventListener('click', async () => {
+  serverInput.value = CLOUD_SERVER_URL;
+  await chrome.storage.local.set({ serverUrl: CLOUD_SERVER_URL });
+  checkServerReachability(CLOUD_SERVER_URL);
+});
+
+checkServerBtn.addEventListener('click', async () => {
+  const clean = normalizeHttpUrl(serverInput.value);
+  serverInput.value = clean;
+  await chrome.storage.local.set({ serverUrl: clean });
+  checkServerReachability(clean);
+});
+
+serverInput.addEventListener('change', async () => {
+  const clean = normalizeHttpUrl(serverInput.value);
+  serverInput.value = clean;
+  await chrome.storage.local.set({ serverUrl: clean });
+  checkServerReachability(clean);
+});
+
+chrome.storage.local.get(
+  ['roomCode', 'serverUrl', 'streaming', 'captureMode', 'errorLogs', 'lastError'],
+  (data) => {
+    const savedUrl =
+      data.serverUrl && !String(data.serverUrl).includes('ais-dev-')
+        ? data.serverUrl
+        : DEFAULT_SERVER_URL;
+    serverInput.value = savedUrl;
+    roomInput.value = data.roomCode || randomCode();
+    captureMode = data.captureMode === 'tab' ? 'tab' : 'desktop';
+    setMode(captureMode);
+    updateUi(Boolean(data.streaming), data.lastError || '');
+    if (Array.isArray(data.errorLogs) && data.errorLogs.length > 0) {
+      copyDiagBtn.textContent = 'Diagnóstico (' + data.errorLogs.length + ')';
+    }
+    checkServerReachability(savedUrl);
+  }
+);
+
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg.type === 'STATUS_CHANGED') {
+    updateUi(Boolean(msg.streaming), msg.errorMessage || '');
   }
 });
 
-function updateUi(streaming) {
+function updateUi(streaming, errorMessage) {
   toggleBtn.textContent = streaming
     ? 'Detener transmisión'
     : captureMode === 'desktop'
       ? 'Transmitir todo el navegador'
       : 'Transmitir pestaña activa';
   toggleBtn.className = streaming ? 'primary stop' : 'primary';
-  statusEl.textContent = streaming
-    ? 'Transmitiendo audio en sala ' + roomInput.value
-    : 'Listo para capturar audio';
+  if (streaming) {
+    statusEl.className = 'status';
+    statusEl.textContent = 'Transmitiendo audio en sala ' + roomInput.value;
+  } else if (errorMessage) {
+    statusEl.className = 'status err';
+    statusEl.textContent = errorMessage;
+  } else {
+    statusEl.className = 'status';
+    statusEl.textContent = 'Listo para capturar audio';
+  }
 }
 
 toggleBtn.addEventListener('click', async () => {
+  const serverUrl = normalizeHttpUrl(serverInput.value);
+  serverInput.value = serverUrl;
   const code = roomInput.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
   if (code.length !== 6) {
+    statusEl.className = 'status err';
     statusEl.textContent = 'Ingresa un código válido de 6 caracteres.';
     return;
   }
-  await chrome.storage.local.set({ roomCode: code, captureMode });
+  await chrome.storage.local.set({ roomCode: code, serverUrl, captureMode, lastError: '' });
   const state = await chrome.storage.local.get(['streaming']);
   if (state.streaming) {
-    chrome.runtime.sendMessage({ type: 'STOP_CAPTURE' }, () => updateUi(false));
+    chrome.runtime.sendMessage({ type: 'STOP_CAPTURE' }, () => updateUi(false, ''));
+    return;
+  }
+
+  const reachable = await checkServerReachability(serverUrl);
+  if (!reachable) {
+    const errMsg = serverStatusEl.textContent || 'Servidor puente no disponible.';
+    updateUi(false, errMsg);
+    await logExtensionError('Servidor (' + serverUrl + '): ' + errMsg);
     return;
   }
 
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
   if (captureMode === 'desktop') {
-    chrome.desktopCapture.chooseDesktopMedia(['screen', 'window', 'audio'], tab, async (streamId) => {
+    chrome.desktopCapture.chooseDesktopMedia(['screen', 'window', 'audio'], tab, (streamId) => {
       if (!streamId) {
+        statusEl.className = 'status';
         statusEl.textContent = 'Selección cancelada.';
         return;
       }
+      statusEl.className = 'status';
+      statusEl.textContent = 'Conectando con el servidor puente...';
       chrome.runtime.sendMessage(
         {
           type: 'START_CAPTURE',
           sourceKind: 'desktop',
           streamId,
           roomCode: code,
-          wsUrl: '${wsOrigin}/ws',
+          wsUrl: toWebSocketUrl(serverUrl),
         },
         (res) => {
-          updateUi(Boolean(res && res.ok));
+          if (res && res.ok) {
+            statusEl.textContent = 'Conectando WebSocket...';
+          } else {
+            updateUi(false, 'No se pudo iniciar la captura offscreen.');
+          }
         }
       );
     });
@@ -282,20 +491,26 @@ toggleBtn.addEventListener('click', async () => {
     chrome.tabCapture.getMediaStreamId({ targetTabId: tab.id }, async (streamId) => {
       if (chrome.runtime.lastError || !streamId) {
         const errMsg = chrome.runtime.lastError?.message || 'sin permisos';
-        statusEl.textContent = 'Error al capturar pestaña: ' + errMsg;
+        updateUi(false, 'Error al capturar pestaña: ' + errMsg);
         await logExtensionError('tabCapture: ' + errMsg);
         return;
       }
+      statusEl.className = 'status';
+      statusEl.textContent = 'Conectando con el servidor puente...';
       chrome.runtime.sendMessage(
         {
           type: 'START_CAPTURE',
           sourceKind: 'tab',
           streamId,
           roomCode: code,
-          wsUrl: '${wsOrigin}/ws',
+          wsUrl: toWebSocketUrl(serverUrl),
         },
         (res) => {
-          updateUi(Boolean(res && res.ok));
+          if (res && res.ok) {
+            statusEl.textContent = 'Conectando WebSocket...';
+          } else {
+            updateUi(false, 'No se pudo iniciar la captura offscreen.');
+          }
         }
       );
     });
@@ -303,12 +518,13 @@ toggleBtn.addEventListener('click', async () => {
 });
 
 copyDiagBtn.addEventListener('click', async () => {
-  const data = await chrome.storage.local.get(['roomCode', 'streaming', 'captureMode', 'errorLogs']);
+  const data = await chrome.storage.local.get(['roomCode', 'serverUrl', 'streaming', 'captureMode', 'errorLogs']);
   const logs = Array.isArray(data.errorLogs) ? data.errorLogs : [];
   const report = [
     '=== WaveBridge Extensión Diagnóstico ===',
     'Versión: v' + manifestVersion + ' (' + EXT_BUILD_DATE + ')',
     'Modo: ' + (data.captureMode || 'desktop'),
+    'Servidor: ' + (data.serverUrl || DEFAULT_SERVER_URL),
     'Sala: ' + (data.roomCode || 'N/A'),
     'Transmitiendo: ' + (data.streaming ? 'sí' : 'no'),
     'Navegador: ' + navigator.userAgent,
@@ -340,26 +556,43 @@ async function appendErrorLog(message) {
   await chrome.storage.local.set({ errorLogs: logs.slice(-15) });
 }
 
+function notifyPopup(streaming, errorMessage = '') {
+  chrome.runtime.sendMessage({
+    type: 'STATUS_CHANGED',
+    streaming,
+    errorMessage,
+  }).catch(() => undefined);
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.type === 'START_CAPTURE') {
     ensureOffscreen()
       .then(() => {
+        chrome.storage.local.set({ streaming: false, lastError: '' });
         chrome.runtime.sendMessage({ ...msg, target: 'offscreen' });
-        chrome.storage.local.set({ streaming: true });
         sendResponse({ ok: true });
       })
       .catch(async (err) => {
-        await appendErrorLog('offscreen: ' + (err?.message || String(err)));
-        await chrome.storage.local.set({ streaming: false });
+        const errMsg = 'offscreen: ' + (err?.message || String(err));
+        await appendErrorLog(errMsg);
+        await chrome.storage.local.set({ streaming: false, lastError: errMsg });
+        notifyPopup(false, errMsg);
         sendResponse({ ok: false });
       });
     return true;
+  }
+  if (msg.type === 'CAPTURE_CONNECTED') {
+    chrome.storage.local.set({ streaming: true, lastError: '' });
+    notifyPopup(true, '');
+    return false;
   }
   if (msg.type === 'STOP_CAPTURE' || msg.type === 'CAPTURE_ENDED') {
     if (msg.type === 'STOP_CAPTURE') {
       chrome.runtime.sendMessage({ type: 'OFFSCREEN_STOP', target: 'offscreen' });
     }
-    chrome.storage.local.set({ streaming: false });
+    const errMsg = msg.errorMessage ? String(msg.errorMessage) : '';
+    chrome.storage.local.set({ streaming: false, lastError: errMsg });
+    notifyPopup(false, errMsg);
     sendResponse({ ok: true });
   }
   if (msg.type === 'LOG_ERROR' && msg.message) {
@@ -377,6 +610,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 let audioCtx = null;
 let socket = null;
 let seq = 0;
+let isShuttingDown = false;
 const peers = new Map();
 let activeReceivers = [];
 
@@ -403,6 +637,22 @@ function encodeAudioPacket(samples, packetSeq, timestampMs, sampleRate, channels
   return buffer;
 }
 
+async function diagnoseWebSocketFailure(wsUrl) {
+  try {
+    const httpUrl = wsUrl.replace(/^wss:/i, 'https:').replace(/^ws:/i, 'http:').replace(/\\/ws$/, '/api/health');
+    const res = await fetch(httpUrl, { redirect: 'manual' });
+    if (res.type === 'opaqueredirect' || res.status === 302 || res.status === 401 || res.status === 403) {
+      return 'WebSocket rechazado (HTTP ' + (res.status || 302) + '): la URL requiere login. Usa Wi-Fi Local o publicación pública.';
+    }
+    if (res.status === 404) {
+      return 'WebSocket HTTP 404 en ' + wsUrl + ': la app no está publicada o falta el servidor puente.';
+    }
+    return 'WebSocket falló en ' + wsUrl + ' (salud HTTP ' + res.status + ').';
+  } catch {
+    return 'No se pudo conectar con ' + wsUrl + '. Verifica que el servidor puente esté activo.';
+  }
+}
+
 chrome.runtime.onMessage.addListener(async (msg) => {
   if (msg.target !== 'offscreen') return;
   if (msg.type === 'OFFSCREEN_STOP') {
@@ -411,6 +661,7 @@ chrome.runtime.onMessage.addListener(async (msg) => {
   }
   if (msg.type === 'START_CAPTURE') {
     cleanup();
+    isShuttingDown = false;
     try {
       if (msg.sourceKind === 'desktop') {
         activeStream = await navigator.mediaDevices.getUserMedia({
@@ -445,9 +696,10 @@ chrome.runtime.onMessage.addListener(async (msg) => {
 
       const audioTracks = activeStream.getAudioTracks();
       if (audioTracks.length === 0) {
-        reportError('No se recibió pista de audio. Marca "Compartir también el audio del sistema".');
+        const noAudioMsg = 'No se recibió pista de audio. Marca "Compartir también el audio del sistema".';
+        reportError(noAudioMsg);
         cleanup();
-        chrome.runtime.sendMessage({ type: 'CAPTURE_ENDED' });
+        chrome.runtime.sendMessage({ type: 'CAPTURE_ENDED', errorMessage: noAudioMsg });
         return;
       }
       audioTracks[0].onended = () => {
@@ -485,9 +737,27 @@ chrome.runtime.onMessage.addListener(async (msg) => {
       processor.connect(silentSink);
       silentSink.connect(audioCtx.destination);
 
+      let wsConnectedOnce = false;
       socket = new WebSocket(msg.wsUrl);
-      socket.onerror = () => reportError('WebSocket error al conectar con ' + msg.wsUrl);
+      socket.onerror = async () => {
+        if (isShuttingDown) return;
+        const detail = await diagnoseWebSocketFailure(msg.wsUrl);
+        reportError(detail);
+        cleanup();
+        chrome.runtime.sendMessage({ type: 'CAPTURE_ENDED', errorMessage: detail });
+      };
+      socket.onclose = async (ev) => {
+        if (isShuttingDown) return;
+        const detail = wsConnectedOnce
+          ? 'Conexión WebSocket cerrada (código ' + ev.code + ').'
+          : await diagnoseWebSocketFailure(msg.wsUrl);
+        reportError(detail);
+        cleanup();
+        chrome.runtime.sendMessage({ type: 'CAPTURE_ENDED', errorMessage: detail });
+      };
       socket.onopen = () => {
+        wsConnectedOnce = true;
+        chrome.runtime.sendMessage({ type: 'CAPTURE_CONNECTED' });
         socket.send(JSON.stringify({
           type: 'join',
           room: msg.roomCode,
@@ -553,17 +823,22 @@ chrome.runtime.onMessage.addListener(async (msg) => {
         }
       };
     } catch (err) {
-      reportError('offscreen capture: ' + (err?.message || String(err)));
-      chrome.runtime.sendMessage({ type: 'CAPTURE_ENDED' });
+      const errMsg = 'offscreen capture: ' + (err?.message || String(err));
+      reportError(errMsg);
+      cleanup();
+      chrome.runtime.sendMessage({ type: 'CAPTURE_ENDED', errorMessage: errMsg });
     }
   }
 });
 
 function cleanup() {
+  isShuttingDown = true;
   activeReceivers = [];
   peers.forEach((pc) => pc.close());
   peers.clear();
   if (socket) {
+    socket.onclose = null;
+    socket.onerror = null;
     socket.close();
     socket = null;
   }
@@ -587,19 +862,19 @@ function cleanup() {
     {
       path: 'popup.html',
       language: 'html',
-      description: 'Selector de modo (Todo el navegador o pestaña), sala y reporte de errores',
+      description: 'Selector de modo, servidor puente editable con prueba en vivo y diagnóstico',
       content: popupHtml,
     },
     {
       path: 'popup.js',
       language: 'javascript',
-      description: 'Inicia desktopCapture o tabCapture, registra errores y copia diagnóstico',
+      description: 'Valida servidor puente (/api/health), captura desktop/tab y copia diagnóstico',
       content: popupJs,
     },
     {
       path: 'background.js',
       language: 'javascript',
-      description: 'Service Worker MV3 que gestiona el documento offscreen persistente',
+      description: 'Service Worker MV3 con sincronización real de estado WebSocket/offscreen',
       content: backgroundJs,
     },
     {
@@ -611,7 +886,7 @@ function cleanup() {
     {
       path: 'offscreen.js',
       language: 'javascript',
-      description: 'Captura el audio del navegador/sistema y transmite por WebRTC + WebSocket PCM',
+      description: 'Captura el audio del navegador/sistema y diagnostica errores WebSocket',
       content: offscreenJs,
     },
   ];

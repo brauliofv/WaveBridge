@@ -26,6 +26,8 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var etRoomCode: EditText
     private lateinit var etServerUrl: EditText
+    private lateinit var btnPresetLocal: MaterialButton
+    private lateinit var btnPresetCloud: MaterialButton
     private lateinit var btnConnect: MaterialButton
     private lateinit var btnMute: MaterialButton
     private lateinit var btnDiagnostics: MaterialButton
@@ -34,6 +36,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvTelemetry: TextView
     private lateinit var tvAppVersion: TextView
     private lateinit var seekVolume: SeekBar
+
+    private val prefs by lazy { getSharedPreferences("wavebridge_prefs", Context.MODE_PRIVATE) }
 
     private lateinit var audioManager: AudioManager
     private var isMuted = false
@@ -76,6 +80,8 @@ class MainActivity : AppCompatActivity() {
 
         etRoomCode = findViewById(R.id.etRoomCode)
         etServerUrl = findViewById(R.id.etServerUrl)
+        btnPresetLocal = findViewById(R.id.btnPresetLocal)
+        btnPresetCloud = findViewById(R.id.btnPresetCloud)
         btnConnect = findViewById(R.id.btnConnect)
         btnMute = findViewById(R.id.btnMute)
         btnDiagnostics = findViewById(R.id.btnDiagnostics)
@@ -87,6 +93,15 @@ class MainActivity : AppCompatActivity() {
 
         tvAppVersion.text = "v${BuildConfig.VERSION_NAME} · ${BuildConfig.BUILD_DATE}"
 
+        val savedServer = prefs.getString("server_url", null)
+        if (!savedServer.isNullOrBlank()) {
+            etServerUrl.setText(savedServer)
+        }
+        val savedRoom = prefs.getString("room_code", null)
+        if (!savedRoom.isNullOrBlank()) {
+            etRoomCode.setText(savedRoom)
+        }
+
         audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
         requestRequiredPermissions()
         handleIncomingIntent(intent)
@@ -96,6 +111,20 @@ class MainActivity : AppCompatActivity() {
             etRoomCode.setText(AudioBridgeService.currentRoomCode)
         }
         updateConnectButtonUi()
+
+        btnPresetLocal.setOnClickListener {
+            val current = etServerUrl.text.toString().trim()
+            if (!current.startsWith("http://192.168.")) {
+                etServerUrl.setText("http://192.168.1.50:3000")
+            }
+            etServerUrl.requestFocus()
+            etServerUrl.setSelection(etServerUrl.text.length)
+            Toast.makeText(this, "Ajusta la IP Wi-Fi de tu laptop (puerto 3000)", Toast.LENGTH_SHORT).show()
+        }
+
+        btnPresetCloud.setOnClickListener {
+            etServerUrl.setText(getString(R.string.default_server_url))
+        }
 
         btnConnect.setOnClickListener {
             if (isConnected) {
@@ -112,6 +141,16 @@ class MainActivity : AppCompatActivity() {
                     AudioBridgeService.recordError(msg)
                     return@setOnClickListener
                 }
+                if (serverUrl.contains("ais-dev-")) {
+                    val msg = "La URL ais-dev requiere sesión privada. Usa tu IP Wi-Fi local o la URL pública."
+                    tvConnectionStatus.text = msg
+                    AudioBridgeService.recordError(msg)
+                    return@setOnClickListener
+                }
+                prefs.edit()
+                    .putString("room_code", room)
+                    .putString("server_url", serverUrl)
+                    .apply()
                 val startIntent = Intent(this, AudioBridgeService::class.java).apply {
                     action = AudioBridgeService.ACTION_CONNECT
                     putExtra(AudioBridgeService.EXTRA_ROOM_CODE, room)
@@ -203,6 +242,10 @@ class MainActivity : AppCompatActivity() {
         val room = data.getQueryParameter("room")
         if (!room.isNullOrBlank()) {
             etRoomCode.setText(room.uppercase().take(6))
+        }
+        val server = data.getQueryParameter("server")
+        if (!server.isNullOrBlank() && !server.contains("ais-dev-")) {
+            etServerUrl.setText(server.trim())
         }
     }
 

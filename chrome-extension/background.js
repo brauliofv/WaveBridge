@@ -16,28 +16,48 @@ async function appendErrorLog(message) {
   await chrome.storage.local.set({ errorLogs: logs.slice(-15) });
 }
 
+function notifyPopup(streaming, errorMessage = '') {
+  chrome.runtime.sendMessage({
+    type: 'STATUS_CHANGED',
+    streaming,
+    errorMessage,
+  }).catch(() => undefined);
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.type === 'START_CAPTURE') {
     ensureOffscreen()
       .then(() => {
+        chrome.storage.local.set({ streaming: false, lastError: '' });
         chrome.runtime.sendMessage({ ...msg, target: 'offscreen' });
-        chrome.storage.local.set({ streaming: true });
         sendResponse({ ok: true });
       })
       .catch(async (err) => {
-        await appendErrorLog(`offscreen: ${err?.message || String(err)}`);
-        await chrome.storage.local.set({ streaming: false });
+        const errMsg = `offscreen: ${err?.message || String(err)}`;
+        await appendErrorLog(errMsg);
+        await chrome.storage.local.set({ streaming: false, lastError: errMsg });
+        notifyPopup(false, errMsg);
         sendResponse({ ok: false });
       });
     return true;
   }
+
+  if (msg.type === 'CAPTURE_CONNECTED') {
+    chrome.storage.local.set({ streaming: true, lastError: '' });
+    notifyPopup(true, '');
+    return false;
+  }
+
   if (msg.type === 'STOP_CAPTURE' || msg.type === 'CAPTURE_ENDED') {
     if (msg.type === 'STOP_CAPTURE') {
       chrome.runtime.sendMessage({ type: 'OFFSCREEN_STOP', target: 'offscreen' });
     }
-    chrome.storage.local.set({ streaming: false });
+    const errMsg = msg.errorMessage ? String(msg.errorMessage) : '';
+    chrome.storage.local.set({ streaming: false, lastError: errMsg });
+    notifyPopup(false, errMsg);
     sendResponse({ ok: true });
   }
+
   if (msg.type === 'LOG_ERROR' && msg.message) {
     appendErrorLog(String(msg.message));
   }

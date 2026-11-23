@@ -2,6 +2,7 @@ let activeStream = null;
 let audioCtx = null;
 let socket = null;
 let seq = 0;
+let isShuttingDown = false;
 const peers = new Map();
 let activeReceivers = [];
 
@@ -30,6 +31,22 @@ function encodeAudioPacket(samples, packetSeq, timestampMs, sampleRate, channels
   return buffer;
 }
 
+async function diagnoseWebSocketFailure(wsUrl) {
+  try {
+    const httpUrl = wsUrl.replace(/^wss:/i, 'https:').replace(/^ws:/i, 'http:').replace(/\/ws$/, '/api/health');
+    const res = await fetch(httpUrl, { redirect: 'manual' });
+    if (res.type === 'opaqueredirect' || res.status === 302 || res.status === 401 || res.status === 403) {
+      return `WebSocket rechazado (HTTP ${res.status || 302}): la URL requiere login. Usa Wi-Fi Local o publicación pública.`;
+    }
+    if (res.status === 404) {
+      return `WebSocket HTTP 404 en ${wsUrl}: la app no está publicada o falta el servidor puente.`;
+    }
+    return `WebSocket falló en ${wsUrl} (salud HTTP ${res.status}).`;
+  } catch {
+    return `No se pudo conectar con ${wsUrl}. Verifica que el servidor puente esté activo.`;
+  }
+}
+
 chrome.runtime.onMessage.addListener(async (msg) => {
   if (msg.target !== 'offscreen') return;
   if (msg.type === 'OFFSCREEN_STOP') {
@@ -38,6 +55,7 @@ chrome.runtime.onMessage.addListener(async (msg) => {
   }
   if (msg.type === 'START_CAPTURE') {
     cleanup();
+    isShuttingDown = false;
     try {
       if (msg.sourceKind === 'desktop') {
         activeStream = await navigator.mediaDevices.getUserMedia({
@@ -72,9 +90,10 @@ chrome.runtime.onMessage.addListener(async (msg) => {
 
       const audioTracks = activeStream.getAudioTracks();
       if (audioTracks.length === 0) {
-        reportError('No se recibió pista de audio. Marca "Compartir también el audio del sistema".');
+        const noAudioMsg = 'No se recibió pista de audio. Marca "Compartir también el audio del sistema".';
+        reportError(noAudioMsg);
         cleanup();
-        chrome.runtime.sendMessage({ type: 'CAPTURE_ENDED' });
+        chrome.runtime.sendMessage({ type: 'CAPTURE_ENDED', errorMessage: noAudioMsg });
         return;
       }
 
@@ -114,9 +133,29 @@ chrome.runtime.onMessage.addListener(async (msg) => {
       processor.connect(silentSink);
       silentSink.connect(audioCtx.destination);
 
+      let wsConnectedOnce = false;
       socket = new WebSocket(msg.wsUrl);
-      socket.onerror = () => reportError(`WebSocket error al conectar con ${msg.wsUrl}`);
+      socket.onerror = async () => {
+        if (isShuttingDown) return;
+        const detail = await diagnoseWebSocketFailure(msg.wsUrl);
+        reportError(detail);
+        cleanup();
+        chrome.runtime.sendMessage({ type: 'CAPTURE_ENDED', errorMessage: detail });
+      };
+
+      socket.onclose = async (ev) => {
+        if (isShuttingDown) return;
+        const detail = wsConnectedOnce
+          ? `Conexión WebSocket cerrada (código ${ev.code}).`
+          : await diagnoseWebSocketFailure(msg.wsUrl);
+        reportError(detail);
+        cleanup();
+        chrome.runtime.sendMessage({ type: 'CAPTURE_ENDED', errorMessage: detail });
+      };
+
       socket.onopen = () => {
+        wsConnectedOnce = true;
+        chrome.runtime.sendMessage({ type: 'CAPTURE_CONNECTED' });
         socket.send(
           JSON.stringify({
             type: 'join',
@@ -191,17 +230,22 @@ chrome.runtime.onMessage.addListener(async (msg) => {
         }
       };
     } catch (err) {
-      reportError(`offscreen capture: ${err?.message || String(err)}`);
-      chrome.runtime.sendMessage({ type: 'CAPTURE_ENDED' });
+      const errMsg = `offscreen capture: ${err?.message || String(err)}`;
+      reportError(errMsg);
+      cleanup();
+      chrome.runtime.sendMessage({ type: 'CAPTURE_ENDED', errorMessage: errMsg });
     }
   }
 });
 
 function cleanup() {
+  isShuttingDown = true;
   activeReceivers = [];
   peers.forEach((pc) => pc.close());
   peers.clear();
   if (socket) {
+    socket.onclose = null;
+    socket.onerror = null;
     socket.close();
     socket = null;
   }
