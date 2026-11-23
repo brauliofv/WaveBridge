@@ -52,7 +52,7 @@ export function ExtensionStudioView() {
             Extensión de Chrome (Manifest V3) y App Android
           </h1>
           <p className="mt-1.5 text-sm text-[#9CA3AF] max-w-2xl">
-            Código completo listo para cargar en Chrome usando <code className="font-mono text-[#F4F5F7]">chrome.desktopCapture</code> (todo el navegador), <code className="font-mono text-[#F4F5F7]">chrome.tabCapture</code> y documento offscreen, preconfigurado para tu puente Wi-Fi local (<code className="font-mono text-[#F4F5F7]">http://localhost:3000</code>).{' '}
+            Código completo listo para cargar en Chrome usando <code className="font-mono text-[#F4F5F7]">chrome.desktopCapture</code> (todo el navegador), <code className="font-mono text-[#F4F5F7]">chrome.tabCapture</code> y documento offscreen, con modo <strong className="text-[#F4F5F7]">Directo al móvil (:8765)</strong> sin terminal y <strong className="text-[#F4F5F7]">Puente PC Plan B</strong> (<code className="font-mono text-[#F4F5F7]">http://localhost:3000</code>).{' '}
             <span className="font-mono text-xs text-[#6B7280] tabular-nums">
               v{EXTENSION_VERSION} · {EXTENSION_RELEASE_DATE}
             </span>
@@ -158,8 +158,8 @@ export function ExtensionStudioView() {
           </div>
           <ol className="space-y-2.5 text-sm text-[#9CA3AF] list-decimal list-inside leading-relaxed">
             <li>Sube este repositorio a GitHub: el workflow <code className="font-mono text-[#F4F5F7]">build-apk.yml</code> compilará automáticamente <code className="font-mono text-[#F4F5F7]">wavebridge.apk</code> y lo publicará en <strong className="text-[#F4F5F7]">Releases</strong>.</li>
-            <li>Instala <code className="font-mono text-[#F4F5F7]">wavebridge.apk</code> en tu teléfono Android (con servicio en segundo plano para escuchar con pantalla apagada) o abre el receptor web escaneando el código QR.</li>
-            <li>Empareja tus audífonos inalámbricos al smartphone por Bluetooth, ingresa el código de sala de 6 caracteres y pulsa <strong className="text-[#F4F5F7]">Conectar al emisor</strong>.</li>
+            <li>Instala <code className="font-mono text-[#F4F5F7]">wavebridge.apk</code> en tu teléfono Android, conecta tus audífonos Bluetooth y abre la app: escuchará automáticamente en tu Wi-Fi local (puerto <code className="font-mono text-[#F4F5F7]">8765</code>).</li>
+            <li>En la extensión de Chrome pulsa <strong className="text-[#F4F5F7]">Buscar móvil</strong> y luego <strong className="text-[#F4F5F7]">Transmitir todo el navegador</strong> (si tu red bloquea la conexión directa, ejecuta <code className="font-mono text-[#F4F5F7]">python3 bridge.py</code> como Plan B).</li>
           </ol>
         </div>
       </div>

@@ -1,6 +1,10 @@
-const LOCAL_SERVER_URL = 'http://localhost:3000';
+const LOCAL_BRIDGE_URL = 'http://localhost:3000';
+const ANDROID_DIRECT_PORT = 8765;
 const EXT_BUILD_DATE = '2026-11-22';
 
+const targetDirectBtn = document.getElementById('targetDirectBtn');
+const targetBridgeBtn = document.getElementById('targetBridgeBtn');
+const targetInputLabel = document.getElementById('targetInputLabel');
 const serverInput = document.getElementById('serverUrl');
 const checkServerBtn = document.getElementById('checkServerBtn');
 const serverStatusEl = document.getElementById('serverStatus');
@@ -13,10 +17,11 @@ const modeTabBtn = document.getElementById('modeTabBtn');
 const versionMetaEl = document.getElementById('versionMeta');
 const copyDiagBtn = document.getElementById('copyDiagBtn');
 
-const manifestVersion = chrome.runtime.getManifest().version || '1.0.1';
+const manifestVersion = chrome.runtime.getManifest().version || '1.0.2';
 versionMetaEl.textContent = `v${manifestVersion} · ${EXT_BUILD_DATE}`;
 
 let captureMode = 'desktop';
+let targetMode = 'direct';
 
 function randomCode() {
   const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -44,17 +49,35 @@ function isLocalHttpAddress(rawUrl) {
   }
 }
 
-function normalizeHttpUrl(rawUrl) {
-  const clean = (rawUrl || '').trim().replace(/\/+$/, '');
-  if (!clean) return LOCAL_SERVER_URL;
-  if (clean.startsWith('http://') || clean.startsWith('https://')) return clean;
-  if (clean.startsWith('ws://')) return 'http://' + clean.slice(5);
-  if (clean.startsWith('wss://')) return 'https://' + clean.slice(6);
-  return `http://${clean}`;
+function normalizeTargetUrl(rawValue, mode = targetMode) {
+  const clean = (rawValue || '').trim().replace(/\/+$/, '');
+  if (!clean) {
+    return mode === 'bridge' ? LOCAL_BRIDGE_URL : '';
+  }
+  let withProto = clean;
+  if (withProto.startsWith('ws://')) {
+    withProto = 'http://' + withProto.slice(5);
+  } else if (withProto.startsWith('wss://')) {
+    withProto = 'https://' + withProto.slice(6);
+  } else if (!withProto.startsWith('http://') && !withProto.startsWith('https://')) {
+    withProto = 'http://' + withProto;
+  }
+  try {
+    const parsed = new URL(withProto);
+    if (mode === 'direct' && !parsed.port) {
+      parsed.port = String(ANDROID_DIRECT_PORT);
+    } else if (mode === 'bridge' && !parsed.port) {
+      parsed.port = '3000';
+    }
+    return parsed.origin;
+  } catch {
+    return withProto;
+  }
 }
 
-function toWebSocketUrl(rawUrl) {
-  const clean = normalizeHttpUrl(rawUrl);
+function toWebSocketUrl(rawUrl, mode = targetMode) {
+  const clean = normalizeTargetUrl(rawUrl, mode);
+  if (!clean) return '';
   const wsBase = clean.replace(/^http/i, 'ws');
   return wsBase.endsWith('/ws') ? wsBase : `${wsBase}/ws`;
 }
@@ -67,21 +90,149 @@ async function logExtensionError(message) {
   copyDiagBtn.textContent = `Diagnóstico (${Math.min(logs.length, 15)})`;
 }
 
-async function checkServerReachability(rawUrl) {
-  const baseUrl = normalizeHttpUrl(rawUrl);
-  if (!isLocalHttpAddress(baseUrl)) {
+async function probeDirectAndroidHealth(baseUrl, timeoutMs = 450) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${baseUrl}/api/health`, {
+      method: 'GET',
+      signal: controller.signal,
+    });
+    if (!res.ok) return null;
+    const json = await res.json();
+    if (json && json.ok && json.service === 'wavebridge-android') {
+      return { baseUrl, json };
+    }
+    return null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function detectWebRtcLocalPrefix() {
+  return new Promise((resolve) => {
+    try {
+      const pc = new RTCPeerConnection({ iceServers: [] });
+      let resolved = false;
+      const done = (val) => {
+        if (resolved) return;
+        resolved = true;
+        try {
+          pc.close();
+        } catch {
+          // ignore
+        }
+        resolve(val);
+      };
+      pc.createDataChannel('probe');
+      pc.onicecandidate = (ev) => {
+        const cand = ev?.candidate?.candidate || '';
+        const match = cand.match(/\b((?:192\.168|10\.\d{1,3}|172\.(?:1[6-9]|2\d|3[0-1]))\.\d{1,3})\.\d{1,3}\b/);
+        if (match && match[1]) {
+          done(match[1]);
+        } else if (!ev.candidate) {
+          done(null);
+        }
+      };
+      pc.createOffer().then((offer) => pc.setLocalDescription(offer)).catch(() => done(null));
+      setTimeout(() => done(null), 400);
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+async function scanWifiForAndroid() {
+  checkServerBtn.disabled = true;
+  checkServerBtn.textContent = 'Buscando...';
+  serverStatusEl.className = 'server-status';
+  serverStatusEl.textContent = 'Escaneando Wi-Fi local (puerto 8765)...';
+
+  try {
+    const currentNormalized = normalizeTargetUrl(serverInput.value, 'direct');
+    if (currentNormalized && isLocalHttpAddress(currentNormalized)) {
+      const quickHit = await probeDirectAndroidHealth(currentNormalized, 900);
+      if (quickHit) {
+        applyFoundPhone(quickHit);
+        return true;
+      }
+    }
+
+    const detectedPrefix = await detectWebRtcLocalPrefix();
+    const prefixes = [];
+    if (detectedPrefix) prefixes.push(detectedPrefix);
+    ['192.168.1', '192.168.0', '192.168.100', '192.168.43', '10.0.0'].forEach((p) => {
+      if (!prefixes.includes(p)) prefixes.push(p);
+    });
+
+    for (const prefix of prefixes) {
+      serverStatusEl.textContent = `Buscando Android en ${prefix}.x:8765...`;
+      const hosts = [];
+      for (let i = 2; i <= 254; i++) {
+        hosts.push(`${prefix}.${i}`);
+      }
+      for (let i = 0; i < hosts.length; i += 32) {
+        const batch = hosts.slice(i, i + 32);
+        const results = await Promise.all(
+          batch.map((ip) => probeDirectAndroidHealth(`http://${ip}:${ANDROID_DIRECT_PORT}`, 380))
+        );
+        const found = results.find((item) => item !== null);
+        if (found) {
+          applyFoundPhone(found);
+          return true;
+        }
+      }
+    }
+
     serverStatusEl.className = 'server-status err';
     serverStatusEl.textContent =
-      'Usa una dirección local de tu red Wi-Fi (ej. http://localhost:3000 o http://192.168.x.x:3000).';
+      'No se detectó tu móvil en este Wi-Fi. Verifica que la app WaveBridge esté abierta, o escribe su IP manualmente. Si tu router bloquea la conexión directa, usa "Puente PC (Plan B)".';
+    return false;
+  } finally {
+    checkServerBtn.disabled = false;
+    checkServerBtn.textContent = targetMode === 'direct' ? 'Buscar móvil' : 'Probar';
+  }
+}
+
+function applyFoundPhone(hit) {
+  const { baseUrl, json } = hit;
+  serverInput.value = baseUrl;
+  const detectedRoom =
+    typeof json.roomCode === 'string' && /^[A-Z0-9]{6}$/.test(json.roomCode.toUpperCase())
+      ? json.roomCode.toUpperCase()
+      : '';
+  if (detectedRoom) {
+    roomInput.value = detectedRoom;
+    chrome.storage.local.set({ directUrl: baseUrl, roomCode: detectedRoom });
+  } else {
+    chrome.storage.local.set({ directUrl: baseUrl });
+  }
+  const devName = json.deviceName ? `${json.deviceName} · ` : '';
+  const roomSuffix = detectedRoom ? ` · Sala ${detectedRoom}` : '';
+  serverStatusEl.className = 'server-status ok';
+  serverStatusEl.textContent = `Móvil listo: ${devName}${baseUrl}${roomSuffix}`;
+}
+
+async function checkServerReachability(rawUrl, mode = targetMode) {
+  const baseUrl = normalizeTargetUrl(rawUrl, mode);
+  if (!baseUrl || !isLocalHttpAddress(baseUrl)) {
+    serverStatusEl.className = 'server-status err';
+    serverStatusEl.textContent =
+      mode === 'direct'
+        ? 'Escribe la IP de tu móvil (ej. 192.168.1.42) o pulsa Buscar móvil.'
+        : 'Usa una dirección local de tu red Wi-Fi (ej. http://localhost:3000).';
     return false;
   }
 
   serverStatusEl.className = 'server-status';
-  serverStatusEl.textContent = 'Probando puente local...';
+  serverStatusEl.textContent =
+    mode === 'direct' ? `Verificando móvil en ${baseUrl}...` : 'Probando puente local...';
 
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 3000);
+    const timer = setTimeout(() => controller.abort(), 2500);
     const res = await fetch(`${baseUrl}/api/health`, {
       method: 'GET',
       signal: controller.signal,
@@ -90,11 +241,21 @@ async function checkServerReachability(rawUrl) {
 
     if (!res.ok) {
       serverStatusEl.className = 'server-status err';
-      serverStatusEl.textContent = `El puente respondió HTTP ${res.status}. Verifica que sea WaveBridge en puerto 3000.`;
+      serverStatusEl.textContent = `Respondió HTTP ${res.status} en ${baseUrl}.`;
       return false;
     }
 
     const json = await res.json();
+    if (mode === 'direct') {
+      if (json && json.ok && json.service === 'wavebridge-android') {
+        applyFoundPhone({ baseUrl, json });
+        return true;
+      }
+      serverStatusEl.className = 'server-status err';
+      serverStatusEl.textContent = 'Ese dispositivo no es el receptor WaveBridge Android.';
+      return false;
+    }
+
     if (json && json.ok) {
       let lanTip = '';
       try {
@@ -109,22 +270,59 @@ async function checkServerReachability(rawUrl) {
         // ignore optional LAN info error
       }
       serverStatusEl.className = 'server-status ok';
-      serverStatusEl.textContent = `Puente local activo${lanTip}`;
+      serverStatusEl.textContent = `Puente PC activo${lanTip}`;
       return true;
     }
 
     serverStatusEl.className = 'server-status err';
-    serverStatusEl.textContent = 'Respuesta inesperada del servidor local.';
+    serverStatusEl.textContent = 'Respuesta inesperada del puente local.';
     return false;
   } catch {
     serverStatusEl.className = 'server-status err';
     serverStatusEl.textContent =
-      'Puente local apagado. Ejecuta "python3 bridge.py" en la carpeta del proyecto en tu laptop.';
+      mode === 'direct'
+        ? `No responde ${baseUrl}. Abre la app WaveBridge en Android y pulsa Buscar móvil (o prueba "Puente PC (Plan B)").`
+        : 'Puente local apagado. Ejecuta "python3 bridge.py" en la carpeta del proyecto en tu laptop.';
     return false;
   }
 }
 
-function setMode(mode) {
+function setTargetMode(mode, storedData) {
+  targetMode = mode === 'bridge' ? 'bridge' : 'direct';
+  targetDirectBtn.className = targetMode === 'direct' ? 'mode-btn active' : 'mode-btn';
+  targetBridgeBtn.className = targetMode === 'bridge' ? 'mode-btn active' : 'mode-btn';
+
+  if (targetMode === 'direct') {
+    targetInputLabel.textContent = 'IP de tu móvil Android en Wi-Fi (puerto 8765)';
+    serverInput.placeholder = 'Ej. 192.168.1.42';
+    checkServerBtn.textContent = 'Buscar móvil';
+    if (storedData !== undefined) {
+      serverInput.value =
+        storedData.directUrl && isLocalHttpAddress(storedData.directUrl)
+          ? storedData.directUrl
+          : '';
+    }
+    if (serverInput.value) {
+      checkServerReachability(serverInput.value, 'direct');
+    } else {
+      serverStatusEl.className = 'server-status';
+      serverStatusEl.textContent = 'Abre WaveBridge en tu Android y pulsa "Buscar móvil".';
+    }
+  } else {
+    targetInputLabel.textContent = 'Puente PC Plan B en esta laptop (puerto 3000)';
+    serverInput.placeholder = 'http://localhost:3000';
+    checkServerBtn.textContent = 'Probar';
+    if (storedData !== undefined) {
+      serverInput.value =
+        storedData.bridgeUrl && isLocalHttpAddress(storedData.bridgeUrl)
+          ? storedData.bridgeUrl
+          : LOCAL_BRIDGE_URL;
+    }
+    checkServerReachability(serverInput.value || LOCAL_BRIDGE_URL, 'bridge');
+  }
+}
+
+function setCaptureMode(mode) {
   captureMode = mode === 'tab' ? 'tab' : 'desktop';
   modeDesktopBtn.className = captureMode === 'desktop' ? 'mode-btn active' : 'mode-btn';
   modeTabBtn.className = captureMode === 'tab' ? 'mode-btn active' : 'mode-btn';
@@ -137,39 +335,56 @@ function setMode(mode) {
   );
 }
 
-modeDesktopBtn.addEventListener('click', () => setMode('desktop'));
-modeTabBtn.addEventListener('click', () => setMode('tab'));
+targetDirectBtn.addEventListener('click', async () => {
+  await chrome.storage.local.set({ targetMode: 'direct' });
+  const data = await chrome.storage.local.get(['directUrl']);
+  setTargetMode('direct', data);
+});
+
+targetBridgeBtn.addEventListener('click', async () => {
+  await chrome.storage.local.set({ targetMode: 'bridge' });
+  const data = await chrome.storage.local.get(['bridgeUrl']);
+  setTargetMode('bridge', { bridgeUrl: data.bridgeUrl || LOCAL_BRIDGE_URL });
+});
+
+modeDesktopBtn.addEventListener('click', () => setCaptureMode('desktop'));
+modeTabBtn.addEventListener('click', () => setCaptureMode('tab'));
 
 checkServerBtn.addEventListener('click', async () => {
-  const clean = normalizeHttpUrl(serverInput.value);
-  serverInput.value = clean;
-  await chrome.storage.local.set({ serverUrl: clean });
-  checkServerReachability(clean);
+  if (targetMode === 'direct') {
+    await scanWifiForAndroid();
+  } else {
+    const clean = normalizeTargetUrl(serverInput.value, 'bridge');
+    serverInput.value = clean;
+    await chrome.storage.local.set({ bridgeUrl: clean });
+    checkServerReachability(clean, 'bridge');
+  }
 });
 
 serverInput.addEventListener('change', async () => {
-  const clean = normalizeHttpUrl(serverInput.value);
+  const clean = normalizeTargetUrl(serverInput.value, targetMode);
   serverInput.value = clean;
-  await chrome.storage.local.set({ serverUrl: clean });
-  checkServerReachability(clean);
+  if (targetMode === 'direct') {
+    await chrome.storage.local.set({ directUrl: clean });
+  } else {
+    await chrome.storage.local.set({ bridgeUrl: clean });
+  }
+  if (clean) {
+    checkServerReachability(clean, targetMode);
+  }
 });
 
 chrome.storage.local.get(
-  ['roomCode', 'serverUrl', 'streaming', 'captureMode', 'errorLogs', 'lastError'],
+  ['roomCode', 'targetMode', 'directUrl', 'bridgeUrl', 'streaming', 'captureMode', 'errorLogs', 'lastError'],
   (data) => {
-    const savedUrl =
-      data.serverUrl && isLocalHttpAddress(data.serverUrl)
-        ? data.serverUrl
-        : LOCAL_SERVER_URL;
-    serverInput.value = savedUrl;
     roomInput.value = data.roomCode || randomCode();
     captureMode = data.captureMode === 'tab' ? 'tab' : 'desktop';
-    setMode(captureMode);
+    setTargetMode(data.targetMode === 'bridge' ? 'bridge' : 'direct', data);
+    setCaptureMode(captureMode);
     updateUi(Boolean(data.streaming), data.lastError || '');
     if (Array.isArray(data.errorLogs) && data.errorLogs.length > 0) {
       copyDiagBtn.textContent = `Diagnóstico (${data.errorLogs.length})`;
     }
-    checkServerReachability(savedUrl);
   }
 );
 
@@ -200,8 +415,26 @@ function updateUi(streaming, errorMessage) {
 }
 
 toggleBtn.addEventListener('click', async () => {
-  const serverUrl = normalizeHttpUrl(serverInput.value);
-  serverInput.value = serverUrl;
+  const state = await chrome.storage.local.get(['streaming']);
+  if (state.streaming) {
+    chrome.runtime.sendMessage({ type: 'STOP_CAPTURE' }, () => updateUi(false, ''));
+    return;
+  }
+
+  let serverUrl = normalizeTargetUrl(serverInput.value, targetMode);
+  if (targetMode === 'direct' && !serverUrl) {
+    const found = await scanWifiForAndroid();
+    serverUrl = normalizeTargetUrl(serverInput.value, 'direct');
+    if (!found || !serverUrl) {
+      const errMsg = serverStatusEl.textContent || 'No se encontró tu smartphone Android en Wi-Fi.';
+      updateUi(false, errMsg);
+      await logExtensionError(`Directo Wi-Fi: ${errMsg}`);
+      return;
+    }
+  } else {
+    serverInput.value = serverUrl;
+  }
+
   const code = roomInput.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
   if (code.length !== 6) {
     statusEl.className = 'status err';
@@ -209,21 +442,30 @@ toggleBtn.addEventListener('click', async () => {
     return;
   }
 
-  await chrome.storage.local.set({ roomCode: code, serverUrl, captureMode, lastError: '' });
-  const state = await chrome.storage.local.get(['streaming']);
-
-  if (state.streaming) {
-    chrome.runtime.sendMessage({ type: 'STOP_CAPTURE' }, () => updateUi(false, ''));
-    return;
+  const savePayload = {
+    roomCode: code,
+    targetMode,
+    captureMode,
+    lastError: '',
+  };
+  if (targetMode === 'direct') {
+    savePayload.directUrl = serverUrl;
+  } else {
+    savePayload.bridgeUrl = serverUrl;
   }
+  await chrome.storage.local.set(savePayload);
 
-  const reachable = await checkServerReachability(serverUrl);
+  const reachable = await checkServerReachability(serverUrl, targetMode);
   if (!reachable) {
-    const errMsg = serverStatusEl.textContent || 'Puente local no disponible.';
+    const errMsg = serverStatusEl.textContent || 'Destino local no disponible.';
     updateUi(false, errMsg);
-    await logExtensionError(`Servidor (${serverUrl}): ${errMsg}`);
+    await logExtensionError(`${targetMode} (${serverUrl}): ${errMsg}`);
     return;
   }
+
+  // In case Buscar móvil updated roomInput during checkServerReachability
+  const activeCode = roomInput.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+  await chrome.storage.local.set({ roomCode: activeCode });
 
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
@@ -235,14 +477,15 @@ toggleBtn.addEventListener('click', async () => {
         return;
       }
       statusEl.className = 'status';
-      statusEl.textContent = 'Conectando con el puente local...';
+      statusEl.textContent =
+        targetMode === 'direct' ? 'Conectando directo al móvil...' : 'Conectando con el puente local...';
       chrome.runtime.sendMessage(
         {
           type: 'START_CAPTURE',
           sourceKind: 'desktop',
           streamId,
-          roomCode: code,
-          wsUrl: toWebSocketUrl(serverUrl),
+          roomCode: activeCode,
+          wsUrl: toWebSocketUrl(serverUrl, targetMode),
         },
         (res) => {
           if (res && res.ok) {
@@ -262,14 +505,15 @@ toggleBtn.addEventListener('click', async () => {
         return;
       }
       statusEl.className = 'status';
-      statusEl.textContent = 'Conectando con el puente local...';
+      statusEl.textContent =
+        targetMode === 'direct' ? 'Conectando directo al móvil...' : 'Conectando con el puente local...';
       chrome.runtime.sendMessage(
         {
           type: 'START_CAPTURE',
           sourceKind: 'tab',
           streamId,
-          roomCode: code,
-          wsUrl: toWebSocketUrl(serverUrl),
+          roomCode: activeCode,
+          wsUrl: toWebSocketUrl(serverUrl, targetMode),
         },
         (res) => {
           if (res && res.ok) {
@@ -284,13 +528,25 @@ toggleBtn.addEventListener('click', async () => {
 });
 
 copyDiagBtn.addEventListener('click', async () => {
-  const data = await chrome.storage.local.get(['roomCode', 'serverUrl', 'streaming', 'captureMode', 'errorLogs']);
+  const data = await chrome.storage.local.get([
+    'roomCode',
+    'targetMode',
+    'directUrl',
+    'bridgeUrl',
+    'streaming',
+    'captureMode',
+    'errorLogs',
+  ]);
   const logs = Array.isArray(data.errorLogs) ? data.errorLogs : [];
+  const activeTarget = data.targetMode === 'bridge' ? 'bridge' : 'direct';
+  const activeUrl =
+    activeTarget === 'direct' ? data.directUrl || 'sin detectar' : data.bridgeUrl || LOCAL_BRIDGE_URL;
   const report = [
     '=== WaveBridge Extensión Diagnóstico ===',
     `Versión: v${manifestVersion} (${EXT_BUILD_DATE})`,
-    `Modo: ${data.captureMode || 'desktop'}`,
-    `Servidor: ${data.serverUrl || LOCAL_SERVER_URL}`,
+    `Conexión: ${activeTarget}`,
+    `Destino: ${activeUrl}`,
+    `Modo captura: ${data.captureMode || 'desktop'}`,
     `Sala: ${data.roomCode || 'N/A'}`,
     `Transmitiendo: ${data.streaming ? 'sí' : 'no'}`,
     `Navegador: ${navigator.userAgent}`,

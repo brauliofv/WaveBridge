@@ -32,15 +32,20 @@ function encodeAudioPacket(samples, packetSeq, timestampMs, sampleRate, channels
 }
 
 async function diagnoseWebSocketFailure(wsUrl) {
+  const isDirect = /:8765(\/|$)/.test(wsUrl);
   try {
     const httpUrl = wsUrl.replace(/^wss:/i, 'https:').replace(/^ws:/i, 'http:').replace(/\/ws$/, '/api/health');
     const res = await fetch(httpUrl);
     if (!res.ok) {
-      return `WebSocket HTTP ${res.status} en ${wsUrl}: verifica el puente local en puerto 3000.`;
+      return isDirect
+        ? `WebSocket HTTP ${res.status} en móvil (${wsUrl}).`
+        : `WebSocket HTTP ${res.status} en ${wsUrl}: verifica el puente local en puerto 3000.`;
     }
     return `WebSocket falló en ${wsUrl} (salud HTTP ${res.status}).`;
   } catch {
-    return `No se pudo conectar con ${wsUrl}. Verifica que "python3 bridge.py" esté ejecutándose en tu laptop.`;
+    return isDirect
+      ? `No se pudo conectar con tu móvil en ${wsUrl}. Abre la app WaveBridge en Android (Wi-Fi) o cambia a "Puente PC (Plan B)".`
+      : `No se pudo conectar con ${wsUrl}. Verifica que "python3 bridge.py" esté ejecutándose en tu laptop.`;
   }
 }
 

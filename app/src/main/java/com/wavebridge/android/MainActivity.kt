@@ -8,12 +8,16 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.content.res.ColorStateList
+import android.graphics.Color
 import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
+import android.view.View
 import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
@@ -37,6 +41,11 @@ import java.net.URL
 
 class MainActivity : AppCompatActivity() {
 
+    private lateinit var btnModeDirect: MaterialButton
+    private lateinit var btnModeBridge: MaterialButton
+    private lateinit var layoutDirectInfo: LinearLayout
+    private lateinit var layoutBridgeSettings: LinearLayout
+    private lateinit var tvPhoneIp: TextView
     private lateinit var etRoomCode: EditText
     private lateinit var etServerUrl: EditText
     private lateinit var btnScanLan: MaterialButton
@@ -56,6 +65,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var audioManager: AudioManager
     private var isMuted = false
     private var isConnected = false
+    private var modeDirect = true
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -92,6 +102,11 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        btnModeDirect = findViewById(R.id.btnModeDirect)
+        btnModeBridge = findViewById(R.id.btnModeBridge)
+        layoutDirectInfo = findViewById(R.id.layoutDirectInfo)
+        layoutBridgeSettings = findViewById(R.id.layoutBridgeSettings)
+        tvPhoneIp = findViewById(R.id.tvPhoneIp)
         etRoomCode = findViewById(R.id.etRoomCode)
         etServerUrl = findViewById(R.id.etServerUrl)
         btnScanLan = findViewById(R.id.btnScanLan)
@@ -106,24 +121,60 @@ class MainActivity : AppCompatActivity() {
 
         tvAppVersion.text = "v${BuildConfig.VERSION_NAME} · ${BuildConfig.BUILD_DATE}"
 
+        modeDirect = prefs.getBoolean("mode_direct", true)
         val savedServer = prefs.getString("server_url", null)
         if (!savedServer.isNullOrBlank() && isLocalLanUrl(savedServer)) {
             etServerUrl.setText(savedServer)
         }
-        val savedRoom = prefs.getString("room_code", null)
-        if (!savedRoom.isNullOrBlank()) {
-            etRoomCode.setText(savedRoom)
-        }
+        val savedRoom = prefs.getString("room_code", null)?.takeIf { it.length == 6 }
+            ?: generateRandomRoomCode().also { prefs.edit().putString("room_code", it).apply() }
+        etRoomCode.setText(savedRoom)
 
         audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
         requestRequiredPermissions()
         handleIncomingIntent(intent)
 
         isConnected = AudioBridgeService.currentIsConnected
-        if (AudioBridgeService.currentRoomCode.isNotEmpty()) {
-            etRoomCode.setText(AudioBridgeService.currentRoomCode)
+        if (isConnected) {
+            modeDirect = AudioBridgeService.currentDirectMode
+            if (AudioBridgeService.currentRoomCode.isNotEmpty()) {
+                etRoomCode.setText(AudioBridgeService.currentRoomCode)
+            }
+            tvConnectionStatus.text = AudioBridgeService.currentStatusText
+            val rttStr = if (AudioBridgeService.currentRttMs >= 0) "${AudioBridgeService.currentRttMs} ms" else "—"
+            tvTelemetry.text = "Latencia RTT: $rttStr · Paquetes: ${AudioBridgeService.currentPackets}"
         }
+
+        applyModeUi()
+        refreshPhoneIp()
         updateConnectButtonUi()
+
+        // Zero-step convenience: auto-start direct Wi-Fi receiver on launch when in direct mode
+        if (modeDirect && !isConnected) {
+            startDirectListener(savedRoom)
+        }
+
+        btnModeDirect.setOnClickListener {
+            if (isConnected) {
+                Toast.makeText(this, "Detén el receptor antes de cambiar de modo", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            modeDirect = true
+            prefs.edit().putBoolean("mode_direct", true).apply()
+            applyModeUi()
+            updateConnectButtonUi()
+        }
+
+        btnModeBridge.setOnClickListener {
+            if (isConnected) {
+                Toast.makeText(this, "Detén el receptor antes de cambiar de modo", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            modeDirect = false
+            prefs.edit().putBoolean("mode_direct", false).apply()
+            applyModeUi()
+            updateConnectButtonUi()
+        }
 
         btnScanLan.setOnClickListener {
             scanLocalWifiForBridge()
@@ -137,29 +188,32 @@ class MainActivity : AppCompatActivity() {
                 startService(stopIntent)
             } else {
                 val room = etRoomCode.text.toString().uppercase().replace(Regex("[^A-Z0-9]"), "")
-                val serverUrl = etServerUrl.text.toString().trim()
                 if (room.length != 6) {
                     val msg = "Código inválido: debe tener 6 caracteres"
                     tvConnectionStatus.text = "Ingresa un código válido de 6 caracteres"
                     AudioBridgeService.recordError(msg)
                     return@setOnClickListener
                 }
-                if (!isLocalLanUrl(serverUrl)) {
-                    val msg = "Usa la IP local Wi-Fi de tu laptop (ej. http://192.168.1.50:3000)"
-                    tvConnectionStatus.text = msg
-                    AudioBridgeService.recordError(msg)
-                    return@setOnClickListener
+                prefs.edit().putString("room_code", room).apply()
+
+                if (modeDirect) {
+                    startDirectListener(room)
+                } else {
+                    val serverUrl = etServerUrl.text.toString().trim()
+                    if (!isLocalLanUrl(serverUrl)) {
+                        val msg = "Usa la IP local Wi-Fi de tu laptop (ej. http://192.168.1.50:3000)"
+                        tvConnectionStatus.text = msg
+                        AudioBridgeService.recordError(msg)
+                        return@setOnClickListener
+                    }
+                    prefs.edit().putString("server_url", serverUrl).apply()
+                    val startIntent = Intent(this, AudioBridgeService::class.java).apply {
+                        action = AudioBridgeService.ACTION_CONNECT
+                        putExtra(AudioBridgeService.EXTRA_ROOM_CODE, room)
+                        putExtra(AudioBridgeService.EXTRA_SERVER_URL, serverUrl)
+                    }
+                    ContextCompat.startForegroundService(this, startIntent)
                 }
-                prefs.edit()
-                    .putString("room_code", room)
-                    .putString("server_url", serverUrl)
-                    .apply()
-                val startIntent = Intent(this, AudioBridgeService::class.java).apply {
-                    action = AudioBridgeService.ACTION_CONNECT
-                    putExtra(AudioBridgeService.EXTRA_ROOM_CODE, room)
-                    putExtra(AudioBridgeService.EXTRA_SERVER_URL, serverUrl)
-                }
-                ContextCompat.startForegroundService(this, startIntent)
             }
         }
 
@@ -182,6 +236,67 @@ class MainActivity : AppCompatActivity() {
 
         btnDiagnostics.setOnClickListener {
             shareDiagnosticReport()
+        }
+    }
+
+    private fun generateRandomRoomCode(): String {
+        val chars = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
+        return (1..6).map { chars.random() }.joinToString("")
+    }
+
+    private fun startDirectListener(room: String) {
+        val ip = findLocalWifiIpv4()
+        if (ip == null) {
+            val msg = "Conecta este teléfono al Wi-Fi local para recibir el audio."
+            tvPhoneIp.text = "Sin conexión Wi-Fi"
+            tvConnectionStatus.text = msg
+            AudioBridgeService.recordError(msg)
+            return
+        }
+        tvPhoneIp.text = "$ip:${LocalAudioServer.DEFAULT_PORT}"
+        val startIntent = Intent(this, AudioBridgeService::class.java).apply {
+            action = AudioBridgeService.ACTION_START_DIRECT
+            putExtra(AudioBridgeService.EXTRA_ROOM_CODE, room)
+            putExtra(AudioBridgeService.EXTRA_LISTEN_HOST, ip)
+        }
+        try {
+            ContextCompat.startForegroundService(this, startIntent)
+        } catch (e: Exception) {
+            val msg = "No se pudo iniciar el receptor en segundo plano: ${e.localizedMessage ?: e.javaClass.simpleName}"
+            tvConnectionStatus.text = msg
+            AudioBridgeService.recordError(msg)
+        }
+    }
+
+    private fun refreshPhoneIp() {
+        val ip = findLocalWifiIpv4()
+        tvPhoneIp.text = if (ip != null) {
+            "$ip:${LocalAudioServer.DEFAULT_PORT}"
+        } else {
+            "Conéctate al Wi-Fi local"
+        }
+    }
+
+    private fun applyModeUi() {
+        val activeColor = Color.parseColor("#0EA5E9")
+        val inactiveStroke = Color.parseColor("#2A323D")
+        val activeText = Color.parseColor("#F4F5F7")
+        val mutedText = Color.parseColor("#9CA3AF")
+
+        if (modeDirect) {
+            btnModeDirect.strokeColor = ColorStateList.valueOf(activeColor)
+            btnModeDirect.setTextColor(activeText)
+            btnModeBridge.strokeColor = ColorStateList.valueOf(inactiveStroke)
+            btnModeBridge.setTextColor(mutedText)
+            layoutDirectInfo.visibility = View.VISIBLE
+            layoutBridgeSettings.visibility = View.GONE
+        } else {
+            btnModeBridge.strokeColor = ColorStateList.valueOf(activeColor)
+            btnModeBridge.setTextColor(activeText)
+            btnModeDirect.strokeColor = ColorStateList.valueOf(inactiveStroke)
+            btnModeDirect.setTextColor(mutedText)
+            layoutDirectInfo.visibility = View.GONE
+            layoutBridgeSettings.visibility = View.VISIBLE
         }
     }
 
@@ -262,8 +377,9 @@ class MainActivity : AppCompatActivity() {
                     val addr = addrs.nextElement()
                     if (addr is Inet4Address && !addr.isLoopbackAddress) {
                         val ip = addr.hostAddress ?: continue
+                        if (ip.startsWith("169.254.")) continue
                         if (ip.startsWith("192.168.") || ip.startsWith("10.")) return ip
-                        if (ip.startsWith("172.")) fallback = ip
+                        if (Regex("^172\\.(1[6-9]|2\\d|3[0-1])\\.").containsMatchIn(ip)) fallback = ip
                     }
                 }
             }
@@ -291,15 +407,20 @@ class MainActivity : AppCompatActivity() {
 
     private fun shareDiagnosticReport() {
         val errors = AudioBridgeService.getErrorHistory()
+        val phoneIp = findLocalWifiIpv4() ?: "sin Wi-Fi"
         val report = buildString {
             appendLine("=== WaveBridge Android Diagnóstico ===")
             appendLine("App: v${BuildConfig.VERSION_NAME} (${BuildConfig.BUILD_DATE})")
             appendLine("Dispositivo: ${Build.MANUFACTURER} ${Build.MODEL} (Android ${Build.VERSION.RELEASE})")
+            appendLine("Modo: ${if (modeDirect) "directo-movil" else "puente-pc"}")
+            appendLine("IP móvil: $phoneIp:${LocalAudioServer.DEFAULT_PORT}")
             appendLine("Salida: ${tvBluetoothOutput.text}")
             appendLine("Estado: ${tvConnectionStatus.text}")
             appendLine("Telemetría: ${tvTelemetry.text}")
             appendLine("Sala: ${etRoomCode.text}")
-            appendLine("Servidor local: ${etServerUrl.text}")
+            if (!modeDirect) {
+                appendLine("Servidor local (Plan B): ${etServerUrl.text}")
+            }
             appendLine()
             if (errors.isEmpty()) {
                 appendLine("Errores registrados: ninguno en esta sesión.")
@@ -336,6 +457,22 @@ class MainActivity : AppCompatActivity() {
         )
         audioManager.registerAudioDeviceCallback(audioDeviceCallback, null)
         refreshBluetoothOutput()
+        refreshPhoneIp()
+        syncFromServiceState()
+    }
+
+    private fun syncFromServiceState() {
+        isConnected = AudioBridgeService.currentIsConnected
+        if (isConnected) {
+            modeDirect = AudioBridgeService.currentDirectMode
+            applyModeUi()
+        }
+        if (isConnected || AudioBridgeService.currentStatusText != "Desconectado") {
+            tvConnectionStatus.text = AudioBridgeService.currentStatusText
+        }
+        val rttStr = if (AudioBridgeService.currentRttMs >= 0) "${AudioBridgeService.currentRttMs} ms" else "—"
+        tvTelemetry.text = "Latencia RTT: $rttStr · Paquetes: ${AudioBridgeService.currentPackets}"
+        updateConnectButtonUi()
     }
 
     override fun onStop() {
@@ -357,7 +494,10 @@ class MainActivity : AppCompatActivity() {
         }
         val server = data.getQueryParameter("server")
         if (!server.isNullOrBlank() && isLocalLanUrl(server)) {
+            modeDirect = false
+            prefs.edit().putBoolean("mode_direct", false).apply()
             etServerUrl.setText(server.trim())
+            applyModeUi()
         }
     }
 
@@ -371,10 +511,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateConnectButtonUi() {
-        btnConnect.text = if (isConnected) "Desconectar receptor" else "Conectar al emisor"
+        btnConnect.text = if (isConnected) {
+            if (modeDirect) "Detener receptor Wi-Fi" else "Desconectar receptor"
+        } else {
+            if (modeDirect) "Iniciar receptor Wi-Fi" else "Conectar al puente PC"
+        }
         etRoomCode.isEnabled = !isConnected
         etServerUrl.isEnabled = !isConnected
         btnScanLan.isEnabled = !isConnected
+        btnModeDirect.isEnabled = !isConnected
+        btnModeBridge.isEnabled = !isConnected
     }
 
     private fun refreshBluetoothOutput() {

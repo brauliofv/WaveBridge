@@ -82,6 +82,53 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:text="Modo de conexión Wi-Fi"
+                    android:textColor="#9CA3AF"
+                    android:textSize="12sp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:orientation="horizontal">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnModeDirect"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="40dp"
+                        android:layout_marginEnd="6dp"
+                        android:layout_weight="1"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp"
+                        android:text="Directo (Sin PC)"
+                        android:textAllCaps="false"
+                        android:textColor="#F4F5F7"
+                        android:textSize="12sp"
+                        app:cornerRadius="10dp"
+                        app:strokeColor="#0EA5E9" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnModeBridge"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="40dp"
+                        android:layout_marginStart="6dp"
+                        android:layout_weight="1"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp"
+                        android:text="Puente PC (Plan B)"
+                        android:textAllCaps="false"
+                        android:textColor="#9CA3AF"
+                        android:textSize="12sp"
+                        app:cornerRadius="10dp"
+                        app:strokeColor="#2A323D" />
+                </LinearLayout>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
                     android:text="Código de sala (6 caracteres)"
                     android:textColor="#9CA3AF"
                     android:textSize="12sp" />
@@ -104,43 +151,89 @@
                     android:textStyle="bold"
                     android:typeface="monospace" />
 
-                <TextView
-                    android:layout_width="wrap_content"
+                <!-- Direct Wi-Fi Mode Info -->
+                <LinearLayout
+                    android:id="@+id/layoutDirectInfo"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="12dp"
-                    android:text="IP local de tu laptop en la misma red Wi-Fi"
-                    android:textColor="#9CA3AF"
-                    android:textSize="12sp" />
+                    android:background="#0B0D10"
+                    android:orientation="vertical"
+                    android:padding="12dp">
 
-                <EditText
-                    android:id="@+id/etServerUrl"
-                    android:layout_width="match_parent"
-                    android:layout_height="48dp"
-                    android:layout_marginTop="6dp"
-                    android:background="@android:drawable/editbox_background_normal"
-                    android:backgroundTint="#0B0D10"
-                    android:hint="http://192.168.1.50:3000"
-                    android:inputType="textUri"
-                    android:paddingHorizontal="12dp"
-                    android:text="@string/default_server_url"
-                    android:textColor="#F4F5F7"
-                    android:textColorHint="#4B5563"
-                    android:textSize="13sp" />
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="IP de este teléfono en tu Wi-Fi (puerto 8765)"
+                        android:textColor="#9CA3AF"
+                        android:textSize="11sp" />
 
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnScanLan"
-                    style="@style/Widget.Material3.Button.OutlinedButton"
+                    <TextView
+                        android:id="@+id/tvPhoneIp"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="Detectando Wi-Fi..."
+                        android:textColor="#38BDF8"
+                        android:textSize="16sp"
+                        android:textStyle="bold"
+                        android:typeface="monospace" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="Sin terminal en la laptop: abre la extensión WaveBridge en Chrome, elige Directo al móvil y pulsa Buscar móvil."
+                        android:textColor="#9CA3AF"
+                        android:textSize="11sp" />
+                </LinearLayout>
+
+                <!-- Plan B Bridge Settings -->
+                <LinearLayout
+                    android:id="@+id/layoutBridgeSettings"
                     android:layout_width="match_parent"
-                    android:layout_height="40dp"
-                    android:layout_marginTop="8dp"
-                    android:insetTop="0dp"
-                    android:insetBottom="0dp"
-                    android:text="Buscar PC automáticamente en Wi-Fi"
-                    android:textAllCaps="false"
-                    android:textColor="#38BDF8"
-                    android:textSize="12sp"
-                    app:cornerRadius="10dp"
-                    app:strokeColor="#2A323D" />
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:orientation="vertical"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="IP local de tu laptop en la misma red Wi-Fi"
+                        android:textColor="#9CA3AF"
+                        android:textSize="12sp" />
+
+                    <EditText
+                        android:id="@+id/etServerUrl"
+                        android:layout_width="match_parent"
+                        android:layout_height="48dp"
+                        android:layout_marginTop="6dp"
+                        android:background="@android:drawable/editbox_background_normal"
+                        android:backgroundTint="#0B0D10"
+                        android:hint="http://192.168.1.50:3000"
+                        android:inputType="textUri"
+                        android:paddingHorizontal="12dp"
+                        android:text="@string/default_server_url"
+                        android:textColor="#F4F5F7"
+                        android:textColorHint="#4B5563"
+                        android:textSize="13sp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnScanLan"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="40dp"
+                        android:layout_marginTop="8dp"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp"
+                        android:text="Buscar PC automáticamente en Wi-Fi"
+                        android:textAllCaps="false"
+                        android:textColor="#38BDF8"
+                        android:textSize="12sp"
+                        app:cornerRadius="10dp"
+                        app:strokeColor="#2A323D" />
+                </LinearLayout>
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnConnect"
@@ -148,7 +241,7 @@
                     android:layout_height="52dp"
                     android:layout_marginTop="16dp"
                     android:backgroundTint="#0EA5E9"
-                    android:text="Conectar al emisor"
+                    android:text="Iniciar receptor Wi-Fi"
                     android:textAllCaps="false"
                     android:textColor="#06121A"
                     android:textSize="15sp"
@@ -236,7 +329,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="v1.0.0 · 2026-11-22"
+                android:text="v1.0.2 · 2026-11-22"
                 android:textColor="#6B7280"
                 android:textSize="11sp"
                 android:typeface="monospace" />

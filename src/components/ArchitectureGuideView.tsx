@@ -9,9 +9,9 @@ export function ArchitectureGuideView() {
     },
     {
       step: '02',
-      title: 'Transporte Wi-Fi WebRTC / WS',
+      title: 'Transporte Wi-Fi Directo / Puente',
       detail:
-        'Prioriza WebRTC UDP con códec Opus (hasta 256 kbps) con corrección de errores FEC, y cambia automáticamente a tramas binarias PCM por WebSocket si el firewall bloquea UDP.',
+        'En modo Directo, la extensión transmite tramas PCM estéreo por WebSocket Wi-Fi directo al puerto 8765 del teléfono (sin terminal); como Plan B opcional usa WebRTC/WS vía bridge.py.',
       metric: '8 – 18 ms red local',
     },
     {

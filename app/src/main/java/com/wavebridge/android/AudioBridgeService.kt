@@ -29,17 +29,20 @@ import java.util.concurrent.atomic.AtomicLong
 class AudioBridgeService : Service() {
 
     companion object {
+        const val ACTION_START_DIRECT = "com.wavebridge.android.ACTION_START_DIRECT"
         const val ACTION_CONNECT = "com.wavebridge.android.ACTION_CONNECT"
         const val ACTION_DISCONNECT = "com.wavebridge.android.ACTION_DISCONNECT"
         const val ACTION_SET_VOLUME = "com.wavebridge.android.ACTION_SET_VOLUME"
         const val ACTION_STATE_UPDATE = "com.wavebridge.android.ACTION_STATE_UPDATE"
 
         const val EXTRA_SERVER_URL = "extra_server_url"
+        const val EXTRA_LISTEN_HOST = "extra_listen_host"
         const val EXTRA_ROOM_CODE = "extra_room_code"
         const val EXTRA_VOLUME = "extra_volume"
         const val EXTRA_MUTED = "extra_muted"
 
         const val EXTRA_IS_CONNECTED = "extra_is_connected"
+        const val EXTRA_DIRECT_MODE = "extra_direct_mode"
         const val EXTRA_SENDER_CONNECTED = "extra_sender_connected"
         const val EXTRA_STATUS_TEXT = "extra_status_text"
         const val EXTRA_RTT_MS = "extra_rtt_ms"
@@ -53,7 +56,23 @@ class AudioBridgeService : Service() {
             private set
 
         @Volatile
+        var currentDirectMode = true
+            private set
+
+        @Volatile
         var currentRoomCode = ""
+            private set
+
+        @Volatile
+        var currentStatusText = "Desconectado"
+            private set
+
+        @Volatile
+        var currentRttMs = -1L
+            private set
+
+        @Volatile
+        var currentPackets = 0L
             private set
 
         private val errorHistory = ArrayDeque<String>()
@@ -81,6 +100,7 @@ class AudioBridgeService : Service() {
         .followSslRedirects(false)
         .build()
 
+    private var localAudioServer: LocalAudioServer? = null
     private var webSocket: WebSocket? = null
     private var audioTrack: AudioTrack? = null
     private var currentSampleRate = 48000
@@ -91,6 +111,7 @@ class AudioBridgeService : Service() {
     private var pingScheduler: ScheduledExecutorService? = null
 
     private val isConnectedFlag = AtomicBoolean(false)
+    private val directModeFlag = AtomicBoolean(true)
     private val senderConnectedFlag = AtomicBoolean(false)
     private val packetsCounter = AtomicLong(0L)
 
@@ -115,6 +136,12 @@ class AudioBridgeService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
+            ACTION_START_DIRECT -> {
+                val roomCode = intent.getStringExtra(EXTRA_ROOM_CODE) ?: return START_NOT_STICKY
+                val listenHost = intent.getStringExtra(EXTRA_LISTEN_HOST) ?: "Wi-Fi local"
+                startForeground(NOTIF_ID, buildNotification("Receptor directo · Sala $roomCode"))
+                startDirectServer(roomCode, listenHost)
+            }
             ACTION_CONNECT -> {
                 val serverUrl = intent.getStringExtra(EXTRA_SERVER_URL) ?: return START_NOT_STICKY
                 val roomCode = intent.getStringExtra(EXTRA_ROOM_CODE) ?: return START_NOT_STICKY
@@ -136,8 +163,76 @@ class AudioBridgeService : Service() {
         return START_NOT_STICKY
     }
 
+    private fun startDirectServer(roomCode: String, listenHost: String) {
+        cleanupConnection()
+        directModeFlag.set(true)
+        currentDirectMode = true
+        currentRoomCode = roomCode
+        packetsCounter.set(0L)
+        lastRttMs = 2L
+        acquireWakeLock()
+
+        val server = LocalAudioServer(
+            port = LocalAudioServer.DEFAULT_PORT,
+            roomCodeProvider = { currentRoomCode },
+            deviceNameProvider = { Build.MODEL ?: "Smartphone Android" },
+            onSenderConnected = { senderName ->
+                senderConnectedFlag.set(true)
+                statusText = "Recibiendo audio de $senderName"
+                updateNotification("Recibiendo audio · Sala $roomCode")
+                broadcastState()
+            },
+            onSenderDisconnected = {
+                senderConnectedFlag.set(false)
+                if (isConnectedFlag.get()) {
+                    statusText = "Receptor directo en $listenHost:${LocalAudioServer.DEFAULT_PORT} · Esperando Chrome"
+                    updateNotification("Receptor directo · Sala $roomCode")
+                    broadcastState()
+                }
+            },
+            onPcmFrame = { frame ->
+                val count = packetsCounter.incrementAndGet()
+                audioExecutor.execute {
+                    try {
+                        playPcmFrame(frame)
+                    } catch (e: Exception) {
+                        recordError("AudioTrack: ${e.localizedMessage ?: e.javaClass.simpleName}")
+                    }
+                }
+                if (count % 25L == 0L) {
+                    broadcastState()
+                }
+            },
+            onError = { msg ->
+                recordError(msg)
+                if (!isConnectedFlag.get()) {
+                    statusText = msg
+                    broadcastState()
+                }
+            }
+        )
+
+        if (server.start()) {
+            localAudioServer = server
+            isConnectedFlag.set(true)
+            currentIsConnected = true
+            statusText = "Receptor directo listo ($listenHost:${LocalAudioServer.DEFAULT_PORT}) · Esperando Chrome"
+            updateNotification("Receptor directo · $listenHost:${LocalAudioServer.DEFAULT_PORT}")
+            broadcastState()
+        } else {
+            isConnectedFlag.set(false)
+            currentIsConnected = false
+            statusText = "No se pudo abrir el puerto ${LocalAudioServer.DEFAULT_PORT} en este Wi-Fi."
+            broadcastState()
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+        }
+    }
+
     private fun connectToRoom(rawServerUrl: String, roomCode: String) {
         cleanupConnection()
+        directModeFlag.set(false)
+        currentDirectMode = false
         currentRoomCode = roomCode
         packetsCounter.set(0L)
         lastRttMs = -1L
@@ -344,13 +439,17 @@ class AudioBridgeService : Service() {
     }
 
     private fun broadcastState() {
+        currentStatusText = statusText
+        currentRttMs = lastRttMs
+        currentPackets = packetsCounter.get()
         val intent = Intent(ACTION_STATE_UPDATE).apply {
             setPackage(packageName)
             putExtra(EXTRA_IS_CONNECTED, isConnectedFlag.get())
+            putExtra(EXTRA_DIRECT_MODE, directModeFlag.get())
             putExtra(EXTRA_SENDER_CONNECTED, senderConnectedFlag.get())
             putExtra(EXTRA_STATUS_TEXT, statusText)
             putExtra(EXTRA_RTT_MS, lastRttMs)
-            putExtra(EXTRA_PACKETS, packetsCounter.get())
+            putExtra(EXTRA_PACKETS, currentPackets)
         }
         sendBroadcast(intent)
     }
@@ -366,6 +465,8 @@ class AudioBridgeService : Service() {
     private fun cleanupConnection() {
         pingScheduler?.shutdownNow()
         pingScheduler = null
+        localAudioServer?.stop()
+        localAudioServer = null
         webSocket?.close(1000, "Desconectado por el usuario")
         webSocket = null
         audioTrack?.stop()
@@ -417,7 +518,7 @@ class AudioBridgeService : Service() {
             .setContentTitle("WaveBridge Wi-Fi Audio")
             .setContentText(text)
             .setContentIntent(openIntent)
-            .addAction(0, "Desconectar", stopIntent)
+            .addAction(0, "Detener", stopIntent)
             .setOngoing(true)
             .build()
     }

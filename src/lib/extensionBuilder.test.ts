@@ -21,7 +21,7 @@ test('resolveSafeDefaultBridgeOrigin restricts defaults strictly to local Wi-Fi 
   );
 });
 
-test('buildChromeExtensionFiles produces local-only MV3 manifest and offscreen files', () => {
+test('buildChromeExtensionFiles produces direct-to-Android MV3 manifest and offscreen files', () => {
   const files = buildChromeExtensionFiles('http://192.168.1.50:3000/');
   const paths = files.map((f) => f.path);
 
@@ -46,11 +46,15 @@ test('buildChromeExtensionFiles produces local-only MV3 manifest and offscreen f
 
   const popupJs = files.find((f) => f.path === 'popup.js');
   assert.ok(popupJs?.content.includes("const DEFAULT_SERVER_URL = 'http://192.168.1.50:3000'"));
+  assert.ok(popupJs?.content.includes('const ANDROID_DIRECT_PORT = 8765'));
+  assert.ok(popupJs?.content.includes('wavebridge-android'));
+  assert.ok(popupJs?.content.includes("let targetMode = 'direct'"));
   assert.ok(popupJs?.content.includes('copyDiagBtn'));
   assert.ok(popupJs?.content.includes(EXTENSION_RELEASE_DATE));
   assert.ok(popupJs?.content.includes('/api/network-info'));
 
   const offscreenJs = files.find((f) => f.path === 'offscreen.js');
   assert.ok(offscreenJs?.content.includes('iceServers: []'));
+  assert.ok(offscreenJs?.content.includes(':8765'));
   assert.ok(!offscreenJs?.content.includes('stun.l.google.com'));
 });
