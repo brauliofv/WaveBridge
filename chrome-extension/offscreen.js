@@ -34,16 +34,13 @@ function encodeAudioPacket(samples, packetSeq, timestampMs, sampleRate, channels
 async function diagnoseWebSocketFailure(wsUrl) {
   try {
     const httpUrl = wsUrl.replace(/^wss:/i, 'https:').replace(/^ws:/i, 'http:').replace(/\/ws$/, '/api/health');
-    const res = await fetch(httpUrl, { redirect: 'manual' });
-    if (res.type === 'opaqueredirect' || res.status === 302 || res.status === 401 || res.status === 403) {
-      return `WebSocket rechazado (HTTP ${res.status || 302}): la URL requiere login. Usa Wi-Fi Local o publicación pública.`;
-    }
-    if (res.status === 404) {
-      return `WebSocket HTTP 404 en ${wsUrl}: la app no está publicada o falta el servidor puente.`;
+    const res = await fetch(httpUrl);
+    if (!res.ok) {
+      return `WebSocket HTTP ${res.status} en ${wsUrl}: verifica el puente local en puerto 3000.`;
     }
     return `WebSocket falló en ${wsUrl} (salud HTTP ${res.status}).`;
   } catch {
-    return `No se pudo conectar con ${wsUrl}. Verifica que el servidor puente esté activo.`;
+    return `No se pudo conectar con ${wsUrl}. Verifica que "npm start" esté ejecutándose en tu laptop.`;
   }
 }
 
@@ -189,7 +186,7 @@ chrome.runtime.onMessage.addListener(async (msg) => {
           activeReceivers = data.receivers;
         } else if (data.type === 'receiver-joined') {
           const pc = new RTCPeerConnection({
-            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+            iceServers: [],
           });
           peers.set(data.peerId, pc);
           activeStream.getAudioTracks().forEach((track) => pc.addTrack(track, activeStream));

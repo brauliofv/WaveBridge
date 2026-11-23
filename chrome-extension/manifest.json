@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "WaveBridge — Audio de Chrome a Bluetooth",
   "version": "1.0.1",
-  "description": "Captura todo el audio del navegador (todas las pestañas y notificaciones) o una pestaña específica y lo transmite por Wi-Fi a tu smartphone Android.",
+  "description": "Captura todo el audio del navegador (todas las pestañas y notificaciones) o una pestaña específica y lo transmite por Wi-Fi local a tu smartphone Android.",
   "permissions": [
     "desktopCapture",
     "tabCapture",
@@ -11,8 +11,7 @@
     "storage"
   ],
   "host_permissions": [
-    "http://*/*",
-    "https://*/*"
+    "http://*/*"
   ],
   "action": {
     "default_popup": "popup.html",

@@ -28,6 +28,15 @@
         color: #9ca3af;
         margin-bottom: 5px;
       }
+      .server-row {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 6px;
+      }
+      .server-row input {
+        flex: 1;
+        margin-bottom: 0;
+      }
       input {
         width: 100%;
         box-sizing: border-box;
@@ -37,39 +46,31 @@
         background: #13171d;
         color: #f4f5f7;
         font-size: 12px;
-        margin-bottom: 6px;
+        margin-bottom: 10px;
       }
       input.code {
         font-family: monospace;
         font-size: 15px;
         letter-spacing: 0.14em;
         text-transform: uppercase;
-        margin-bottom: 10px;
       }
-      .presets {
-        display: flex;
-        gap: 6px;
-        margin-bottom: 8px;
-      }
-      .preset-btn {
-        flex: 1;
-        padding: 5px 8px;
-        border-radius: 6px;
+      .check-btn {
+        padding: 0 10px;
+        border-radius: 8px;
         border: 1px solid #232933;
         background: #13171d;
-        color: #9ca3af;
-        font-size: 10px;
+        color: #f4f5f7;
+        font-size: 11px;
         font-weight: 600;
         cursor: pointer;
       }
-      .preset-btn:hover {
+      .check-btn:hover {
         border-color: #38bdf8;
-        color: #f4f5f7;
       }
       .server-status {
         margin-bottom: 10px;
         font-size: 11px;
-        line-height: 1.35;
+        line-height: 1.4;
         color: #9ca3af;
       }
       .server-status.ok {
@@ -154,22 +155,20 @@
     </style>
   </head>
   <body>
-    <h1>WaveBridge</h1>
-    <p>Escucha todas tus pestañas y notificaciones o una pestaña puntual en tus audífonos Bluetooth.</p>
+    <h1>WaveBridge (Wi-Fi Local)</h1>
+    <p>Transmite todas tus pestañas y notificaciones directamente por tu red Wi-Fi local sin usar la nube.</p>
 
     <div class="modes">
       <button id="modeDesktopBtn" class="mode-btn active" type="button">Todo el navegador</button>
       <button id="modeTabBtn" class="mode-btn" type="button">Solo esta pestaña</button>
     </div>
 
-    <label for="serverUrl">Servidor puente (Wi-Fi Local o Nube pública)</label>
-    <input id="serverUrl" type="url" placeholder="http://localhost:3000" />
-    <div class="presets">
-      <button id="presetLocalBtn" class="preset-btn" type="button">Wi-Fi Local (:3000)</button>
-      <button id="presetCloudBtn" class="preset-btn" type="button">Nube (ais-pre)</button>
-      <button id="checkServerBtn" class="preset-btn" type="button">Probar</button>
+    <label for="serverUrl">Puente local en esta laptop</label>
+    <div class="server-row">
+      <input id="serverUrl" type="url" placeholder="http://localhost:3000" />
+      <button id="checkServerBtn" class="check-btn" type="button">Probar</button>
     </div>
-    <div id="serverStatus" class="server-status">Verificando servidor puente...</div>
+    <div id="serverStatus" class="server-status">Verificando puente local...</div>
 
     <label for="roomCode">Código de sala (6 caracteres)</label>
     <input id="roomCode" class="code" maxlength="6" placeholder="WVB492" />

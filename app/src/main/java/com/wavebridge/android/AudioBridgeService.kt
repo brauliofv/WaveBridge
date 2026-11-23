@@ -243,11 +243,9 @@ class AudioBridgeService : Service() {
                 val rawMsg = t.localizedMessage ?: t.javaClass.simpleName
                 statusText = when {
                     httpCode == 404 ->
-                        "HTTP 404: Servidor no publicado en esta URL. Publica la app o usa tu IP Wi-Fi local (ej. http://192.168.1.50:3000)."
-                    httpCode != null && httpCode in listOf(301, 302, 303, 307, 308, 401, 403) ->
-                        "Esta URL exige inicio de sesión (HTTP $httpCode). Usa tu IP Wi-Fi local o la URL pública."
+                        "HTTP 404 en $wsUrl: ese puerto no corresponde a WaveBridge. Verifica que el puente local esté corriendo en puerto 3000."
                     t is java.net.ConnectException || t is java.net.UnknownHostException || t is java.net.SocketTimeoutException ->
-                        "No se pudo conectar con $wsUrl. Verifica la red Wi-Fi y que el puente esté iniciado."
+                        "No se pudo conectar con $wsUrl. Revisa que laptop y smartphone estén en el mismo Wi-Fi y ejecuta 'npm start' en tu laptop."
                     else ->
                         "Error de conexión: $rawMsg"
                 }

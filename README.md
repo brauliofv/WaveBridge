@@ -54,32 +54,21 @@
 
 *(Alternativamente, desde la consola web de WaveBridge también puedes generar y descargar un `.zip` de la extensión en la pestaña **Extensión Chrome**).*
 
-### 3. Conectar y escuchar en tiempo real
+### 3. Iniciar el puente Wi-Fi local y conectar (100% en tu red local, sin internet)
 
-1. Haz clic en el icono de la extensión **WaveBridge**, verifica la URL del servidor puente y anota tu **código de sala de 6 caracteres**.
-2. Selecciona **Todo el navegador** (recomendado para escuchar todas tus pestañas, notificaciones, YouTube y Spotify a la vez sin cambiar de pestaña) y pulsa **Transmitir todo el navegador**. En la ventana de Chrome elige **Pantalla completa** y marca la casilla **Compartir también el audio del sistema**. *(Si solo quieres aislar una pestaña, elige **Solo esta pestaña**).*
-3. Abre la app **WaveBridge** en tu Android, ingresa el mismo código de sala (y la misma URL del servidor puente) y pulsa **Conectar al emisor**.
-4. ¡Listo! Todo el audio del navegador sonará en tus audífonos inalámbricos aunque trabajes cambiando entre muchas pestañas. Puedes bloquear la pantalla del teléfono y el servicio en segundo plano mantendrá la reproducción activa.
+WaveBridge **no envía tu audio a la nube**. Toda la transmisión ocurre dentro de tu propio router Wi-Fi entre tu laptop y tu smartphone:
 
----
-
-## Uso en red Wi-Fi local (Recomendado: mínima latencia y sin depender de la nube)
-
-Para obtener la latencia más baja posible (recomendado para video, clases o notificaciones sin depender de servidores externos), ejecuta el servidor puente directamente en tu laptop dentro de la misma red Wi-Fi que tu smartphone:
-
-```bash
-npm install
-npm run build
-npm start
-```
-
-El servidor quedará escuchando en el puerto `3000`. Luego:
-1. En la **extensión de Chrome**, pulsa **Wi-Fi Local (:3000)** (`http://localhost:3000`).
-2. En la **app Android**, pulsa **Wi-Fi Local** e ingresa la IP de tu laptop en el router (por ejemplo `http://192.168.1.50:3000`).
-
-> **¿Ves HTTP 404 o error de WebSocket con `ais-pre` / `ais-dev`?**
-> - `ais-dev-...` es una URL privada de vista previa protegida por sesión de Google; Chrome externo y Android no pueden conectarse por WebSocket a esa URL.
-> - `ais-pre-...` solo responde cuando la app está publicada/compartida en la nube; si aún no se ha publicado devolverá `HTTP 404`. Usar el puente **Wi-Fi Local (`npm start`)** resuelve ambos casos al instante.
+1. En la carpeta del proyecto en tu laptop, inicia el puente local:
+   ```bash
+   npm install
+   npm run build
+   npm start
+   ```
+   *(Quedará escuchando en `http://localhost:3000` dentro de tu Wi-Fi local).*
+2. Haz clic en el icono de la extensión **WaveBridge** en Chrome: verificará `http://localhost:3000` automáticamente y te mostrará también la **IP Wi-Fi para Android** (por ejemplo `http://192.168.1.50:3000`).
+3. Selecciona **Todo el navegador** (para escuchar todas tus pestañas y notificaciones) y pulsa **Transmitir todo el navegador**. En la ventana de Chrome elige **Pantalla completa** y marca **Compartir también el audio del sistema**.
+4. Abre la app **WaveBridge** en tu Android (conectado al mismo Wi-Fi), pulsa **Buscar PC automáticamente en Wi-Fi** (o escribe la IP local que te mostró la extensión), ingresa el código de sala de 6 caracteres y pulsa **Conectar al emisor**.
+5. ¡Listo! Todo el audio del navegador sonará directamente en tus audífonos inalámbricos sin salir de tu red local. Puedes bloquear la pantalla del teléfono y el servicio en segundo plano mantendrá la reproducción activa.
 
 ---
 

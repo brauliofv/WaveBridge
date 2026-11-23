@@ -75,10 +75,13 @@ export function SenderView({
   }, []);
 
   const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
-  const isPrivatePreview = currentOrigin.includes('ais-dev-');
   const isLocalhost =
     typeof window !== 'undefined' &&
     (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+  const isRemoteHost =
+    typeof window !== 'undefined' &&
+    !isLocalhost &&
+    !/^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(window.location.hostname);
   const effectiveBridgeOrigin =
     isLocalhost && lanUrls.length > 0 ? lanUrls[0] : currentOrigin;
 
@@ -240,18 +243,18 @@ export function SenderView({
             </div>
           </div>
 
-          {isPrivatePreview ? (
+          {isRemoteHost ? (
             <div className="rounded-xl border border-[#F59E0B]/30 bg-[#F59E0B]/10 p-3.5 text-xs text-[#FDE68A] leading-relaxed flex items-start gap-2.5">
               <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-[#F59E0B]" aria-hidden="true" />
               <div>
-                <strong className="font-semibold text-[#FEF3C7]">Vista previa privada (ais-dev):</strong>{' '}
-                Android y la extensión externa no pueden conectarse a esta URL porque exige sesión de Google. Publica la app para activar <code className="font-mono">ais-pre</code> o ejecuta <code className="font-mono">npm start</code> en tu laptop para usar Wi-Fi local.
+                <strong className="font-semibold text-[#FEF3C7]">Solo Wi-Fi Local:</strong>{' '}
+                WaveBridge transmite el audio directamente dentro de tu router sin pasar por la nube. Para enlazar tu extensión de Chrome y la app Android, inicia el puente en tu laptop con <code className="font-mono">npm start</code> y conecta ambos al mismo Wi-Fi.
               </div>
             </div>
           ) : (
             effectiveBridgeOrigin && (
               <div className="rounded-xl border border-white/10 bg-[#0B0D10] px-3.5 py-2.5 text-xs text-[#9CA3AF] flex flex-wrap items-center justify-between gap-2">
-                <span>Servidor puente para la app:</span>
+                <span>Puente Wi-Fi local:</span>
                 <code className="font-mono text-[#F4F5F7]">{effectiveBridgeOrigin}</code>
               </div>
             )

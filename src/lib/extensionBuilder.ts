@@ -8,32 +8,38 @@ export interface ExtensionFile {
   content: string;
 }
 
-const CLOUD_BRIDGE_FALLBACK = 'https://ais-pre-eqopg3zyc7utrib2ilmkpk-197474785049.us-west2.run.app';
 const LOCAL_BRIDGE_DEFAULT = 'http://localhost:3000';
 
 export function resolveSafeDefaultBridgeOrigin(bridgeOrigin: string): string {
   const clean = bridgeOrigin.trim().replace(/\/+$/, '');
-  if (!clean || clean.includes('ais-dev-')) {
-    return LOCAL_BRIDGE_DEFAULT;
+  try {
+    const parsed = new URL(clean);
+    const h = parsed.hostname;
+    const isLocal =
+      parsed.protocol === 'http:' &&
+      (h === 'localhost' ||
+        h === '127.0.0.1' ||
+        h.startsWith('192.168.') ||
+        h.startsWith('10.') ||
+        /^172\.(1[6-9]|2\d|3[0-1])\./.test(h));
+    if (isLocal) return clean;
+  } catch {
+    // fallback below
   }
-  return clean;
+  return LOCAL_BRIDGE_DEFAULT;
 }
 
 export function buildChromeExtensionFiles(bridgeOrigin: string): ExtensionFile[] {
   const defaultOrigin = resolveSafeDefaultBridgeOrigin(bridgeOrigin);
-  const cloudOrigin =
-    defaultOrigin.startsWith('https://') && !defaultOrigin.includes('localhost')
-      ? defaultOrigin
-      : CLOUD_BRIDGE_FALLBACK;
 
   const manifest = {
     manifest_version: 3,
     name: 'WaveBridge — Audio de Chrome a Bluetooth',
     version: EXTENSION_VERSION,
     description:
-      'Captura todo el audio del navegador (todas las pestañas y notificaciones) o una pestaña específica y lo transmite por Wi-Fi a tu smartphone Android.',
+      'Captura todo el audio del navegador (todas las pestañas y notificaciones) o una pestaña específica y lo transmite por Wi-Fi local a tu smartphone Android.',
     permissions: ['desktopCapture', 'tabCapture', 'activeTab', 'offscreen', 'storage'],
-    host_permissions: ['http://*/*', 'https://*/*'],
+    host_permissions: ['http://*/*'],
     action: {
       default_popup: 'popup.html',
       default_title: 'WaveBridge Emisor',
@@ -73,6 +79,15 @@ export function buildChromeExtensionFiles(bridgeOrigin: string): ExtensionFile[]
         color: #9ca3af;
         margin-bottom: 5px;
       }
+      .server-row {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 6px;
+      }
+      .server-row input {
+        flex: 1;
+        margin-bottom: 0;
+      }
       input {
         width: 100%;
         box-sizing: border-box;
@@ -82,39 +97,31 @@ export function buildChromeExtensionFiles(bridgeOrigin: string): ExtensionFile[]
         background: #13171d;
         color: #f4f5f7;
         font-size: 12px;
-        margin-bottom: 6px;
+        margin-bottom: 10px;
       }
       input.code {
         font-family: monospace;
         font-size: 15px;
         letter-spacing: 0.14em;
         text-transform: uppercase;
-        margin-bottom: 10px;
       }
-      .presets {
-        display: flex;
-        gap: 6px;
-        margin-bottom: 8px;
-      }
-      .preset-btn {
-        flex: 1;
-        padding: 5px 8px;
-        border-radius: 6px;
+      .check-btn {
+        padding: 0 10px;
+        border-radius: 8px;
         border: 1px solid #232933;
         background: #13171d;
-        color: #9ca3af;
-        font-size: 10px;
+        color: #f4f5f7;
+        font-size: 11px;
         font-weight: 600;
         cursor: pointer;
       }
-      .preset-btn:hover {
+      .check-btn:hover {
         border-color: #38bdf8;
-        color: #f4f5f7;
       }
       .server-status {
         margin-bottom: 10px;
         font-size: 11px;
-        line-height: 1.35;
+        line-height: 1.4;
         color: #9ca3af;
       }
       .server-status.ok {
@@ -199,22 +206,20 @@ export function buildChromeExtensionFiles(bridgeOrigin: string): ExtensionFile[]
     </style>
   </head>
   <body>
-    <h1>WaveBridge</h1>
-    <p>Escucha todas tus pestañas y notificaciones o una pestaña puntual en tus audífonos Bluetooth.</p>
+    <h1>WaveBridge (Wi-Fi Local)</h1>
+    <p>Transmite todas tus pestañas y notificaciones directamente por tu red Wi-Fi local sin usar la nube.</p>
 
     <div class="modes">
       <button id="modeDesktopBtn" class="mode-btn active" type="button">Todo el navegador</button>
       <button id="modeTabBtn" class="mode-btn" type="button">Solo esta pestaña</button>
     </div>
 
-    <label for="serverUrl">Servidor puente (Wi-Fi Local o Nube pública)</label>
-    <input id="serverUrl" type="url" placeholder="http://localhost:3000" />
-    <div class="presets">
-      <button id="presetLocalBtn" class="preset-btn" type="button">Wi-Fi Local (:3000)</button>
-      <button id="presetCloudBtn" class="preset-btn" type="button">Nube (ais-pre)</button>
-      <button id="checkServerBtn" class="preset-btn" type="button">Probar</button>
+    <label for="serverUrl">Puente local en esta laptop</label>
+    <div class="server-row">
+      <input id="serverUrl" type="url" placeholder="http://localhost:3000" />
+      <button id="checkServerBtn" class="check-btn" type="button">Probar</button>
     </div>
-    <div id="serverStatus" class="server-status">Verificando servidor puente...</div>
+    <div id="serverStatus" class="server-status">Verificando puente local...</div>
 
     <label for="roomCode">Código de sala (6 caracteres)</label>
     <input id="roomCode" class="code" maxlength="6" placeholder="WVB492" />
@@ -232,13 +237,9 @@ export function buildChromeExtensionFiles(bridgeOrigin: string): ExtensionFile[]
 </html>`;
 
   const popupJs = `const DEFAULT_SERVER_URL = '${defaultOrigin}';
-const LOCAL_SERVER_URL = '${LOCAL_BRIDGE_DEFAULT}';
-const CLOUD_SERVER_URL = '${cloudOrigin}';
 const EXT_BUILD_DATE = '${EXTENSION_RELEASE_DATE}';
 
 const serverInput = document.getElementById('serverUrl');
-const presetLocalBtn = document.getElementById('presetLocalBtn');
-const presetCloudBtn = document.getElementById('presetCloudBtn');
 const checkServerBtn = document.getElementById('checkServerBtn');
 const serverStatusEl = document.getElementById('serverStatus');
 const roomInput = document.getElementById('roomCode');
@@ -262,6 +263,23 @@ function randomCode() {
     out += chars[Math.floor(Math.random() * chars.length)];
   }
   return out;
+}
+
+function isLocalHttpAddress(rawUrl) {
+  try {
+    const u = new URL(rawUrl);
+    const h = u.hostname;
+    return (
+      u.protocol === 'http:' &&
+      (h === 'localhost' ||
+        h === '127.0.0.1' ||
+        h.startsWith('192.168.') ||
+        h.startsWith('10.') ||
+        /^172\\.(1[6-9]|2\\d|3[0-1])\\./.test(h))
+    );
+  } catch {
+    return false;
+  }
 }
 
 function normalizeHttpUrl(rawUrl) {
@@ -289,62 +307,57 @@ async function logExtensionError(message) {
 
 async function checkServerReachability(rawUrl) {
   const baseUrl = normalizeHttpUrl(rawUrl);
-  if (baseUrl.includes('ais-dev-')) {
+  if (!isLocalHttpAddress(baseUrl)) {
     serverStatusEl.className = 'server-status err';
     serverStatusEl.textContent =
-      'URL privada (ais-dev) bloqueada por login. Usa Wi-Fi Local (:3000) o publica la app.';
+      'Usa una dirección local de tu red Wi-Fi (ej. http://localhost:3000 o http://192.168.x.x:3000).';
     return false;
   }
 
   serverStatusEl.className = 'server-status';
-  serverStatusEl.textContent = 'Probando conexión con el puente...';
+  serverStatusEl.textContent = 'Probando puente local...';
 
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 3500);
+    const timer = setTimeout(() => controller.abort(), 3000);
     const res = await fetch(baseUrl + '/api/health', {
       method: 'GET',
-      redirect: 'manual',
       signal: controller.signal,
     });
     clearTimeout(timer);
 
-    if (res.type === 'opaqueredirect' || res.status === 302 || res.status === 401 || res.status === 403) {
-      serverStatusEl.className = 'server-status err';
-      serverStatusEl.textContent =
-        'La URL exige autenticación (HTTP ' + (res.status || 302) + '). Usa Wi-Fi Local o publicación pública.';
-      return false;
-    }
-
-    if (res.status === 404) {
-      serverStatusEl.className = 'server-status err';
-      serverStatusEl.textContent =
-        'HTTP 404: El servidor aún no está publicado en esta URL. Usa Wi-Fi Local ("npm start").';
-      return false;
-    }
-
     if (!res.ok) {
       serverStatusEl.className = 'server-status err';
-      serverStatusEl.textContent = 'El servidor respondió HTTP ' + res.status + '.';
+      serverStatusEl.textContent = 'El puente respondió HTTP ' + res.status + '. Verifica que sea WaveBridge en puerto 3000.';
       return false;
     }
 
     const json = await res.json();
     if (json && json.ok) {
+      let lanTip = '';
+      try {
+        const netRes = await fetch(baseUrl + '/api/network-info');
+        if (netRes.ok) {
+          const netJson = await netRes.json();
+          if (Array.isArray(netJson.lanUrls) && netJson.lanUrls.length > 0) {
+            lanTip = ' · IP Wi-Fi para Android: ' + netJson.lanUrls[0];
+          }
+        }
+      } catch {
+        // ignore optional LAN info error
+      }
       serverStatusEl.className = 'server-status ok';
-      serverStatusEl.textContent = 'Puente operativo (' + (json.activeRooms ?? 0) + ' salas activas).';
+      serverStatusEl.textContent = 'Puente local activo' + lanTip;
       return true;
     }
 
     serverStatusEl.className = 'server-status err';
-    serverStatusEl.textContent = 'Respuesta inesperada del servidor puente.';
+    serverStatusEl.textContent = 'Respuesta inesperada del servidor local.';
     return false;
   } catch {
     serverStatusEl.className = 'server-status err';
     serverStatusEl.textContent =
-      baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1') || baseUrl.includes('192.168.')
-        ? 'No responde en red local. Ejecuta "npm start" en tu laptop.'
-        : 'No se pudo contactar con el servidor puente.';
+      'Puente local apagado. Ejecuta "npm start" en la carpeta del proyecto en tu laptop.';
     return false;
   }
 }
@@ -365,18 +378,6 @@ function setMode(mode) {
 modeDesktopBtn.addEventListener('click', () => setMode('desktop'));
 modeTabBtn.addEventListener('click', () => setMode('tab'));
 
-presetLocalBtn.addEventListener('click', async () => {
-  serverInput.value = LOCAL_SERVER_URL;
-  await chrome.storage.local.set({ serverUrl: LOCAL_SERVER_URL });
-  checkServerReachability(LOCAL_SERVER_URL);
-});
-
-presetCloudBtn.addEventListener('click', async () => {
-  serverInput.value = CLOUD_SERVER_URL;
-  await chrome.storage.local.set({ serverUrl: CLOUD_SERVER_URL });
-  checkServerReachability(CLOUD_SERVER_URL);
-});
-
 checkServerBtn.addEventListener('click', async () => {
   const clean = normalizeHttpUrl(serverInput.value);
   serverInput.value = clean;
@@ -395,7 +396,7 @@ chrome.storage.local.get(
   ['roomCode', 'serverUrl', 'streaming', 'captureMode', 'errorLogs', 'lastError'],
   (data) => {
     const savedUrl =
-      data.serverUrl && !String(data.serverUrl).includes('ais-dev-')
+      data.serverUrl && isLocalHttpAddress(data.serverUrl)
         ? data.serverUrl
         : DEFAULT_SERVER_URL;
     serverInput.value = savedUrl;
@@ -425,7 +426,7 @@ function updateUi(streaming, errorMessage) {
   toggleBtn.className = streaming ? 'primary stop' : 'primary';
   if (streaming) {
     statusEl.className = 'status';
-    statusEl.textContent = 'Transmitiendo audio en sala ' + roomInput.value;
+    statusEl.textContent = 'Transmitiendo en Wi-Fi local · Sala ' + roomInput.value;
   } else if (errorMessage) {
     statusEl.className = 'status err';
     statusEl.textContent = errorMessage;
@@ -453,7 +454,7 @@ toggleBtn.addEventListener('click', async () => {
 
   const reachable = await checkServerReachability(serverUrl);
   if (!reachable) {
-    const errMsg = serverStatusEl.textContent || 'Servidor puente no disponible.';
+    const errMsg = serverStatusEl.textContent || 'Puente local no disponible.';
     updateUi(false, errMsg);
     await logExtensionError('Servidor (' + serverUrl + '): ' + errMsg);
     return;
@@ -469,7 +470,7 @@ toggleBtn.addEventListener('click', async () => {
         return;
       }
       statusEl.className = 'status';
-      statusEl.textContent = 'Conectando con el servidor puente...';
+      statusEl.textContent = 'Conectando con el puente local...';
       chrome.runtime.sendMessage(
         {
           type: 'START_CAPTURE',
@@ -480,7 +481,7 @@ toggleBtn.addEventListener('click', async () => {
         },
         (res) => {
           if (res && res.ok) {
-            statusEl.textContent = 'Conectando WebSocket...';
+            statusEl.textContent = 'Conectando WebSocket local...';
           } else {
             updateUi(false, 'No se pudo iniciar la captura offscreen.');
           }
@@ -496,7 +497,7 @@ toggleBtn.addEventListener('click', async () => {
         return;
       }
       statusEl.className = 'status';
-      statusEl.textContent = 'Conectando con el servidor puente...';
+      statusEl.textContent = 'Conectando con el puente local...';
       chrome.runtime.sendMessage(
         {
           type: 'START_CAPTURE',
@@ -507,7 +508,7 @@ toggleBtn.addEventListener('click', async () => {
         },
         (res) => {
           if (res && res.ok) {
-            statusEl.textContent = 'Conectando WebSocket...';
+            statusEl.textContent = 'Conectando WebSocket local...';
           } else {
             updateUi(false, 'No se pudo iniciar la captura offscreen.');
           }
@@ -544,7 +545,7 @@ copyDiagBtn.addEventListener('click', async () => {
     await chrome.offscreen.createDocument({
       url: 'offscreen.html',
       reasons: ['USER_MEDIA', 'DISPLAY_MEDIA', 'WEB_RTC'],
-      justification: 'Streaming de audio del navegador por WebRTC/WebSocket hacia el smartphone.',
+      justification: 'Streaming de audio del navegador por WebRTC/WebSocket local hacia el smartphone.',
     });
   }
 }
@@ -640,16 +641,13 @@ function encodeAudioPacket(samples, packetSeq, timestampMs, sampleRate, channels
 async function diagnoseWebSocketFailure(wsUrl) {
   try {
     const httpUrl = wsUrl.replace(/^wss:/i, 'https:').replace(/^ws:/i, 'http:').replace(/\\/ws$/, '/api/health');
-    const res = await fetch(httpUrl, { redirect: 'manual' });
-    if (res.type === 'opaqueredirect' || res.status === 302 || res.status === 401 || res.status === 403) {
-      return 'WebSocket rechazado (HTTP ' + (res.status || 302) + '): la URL requiere login. Usa Wi-Fi Local o publicación pública.';
-    }
-    if (res.status === 404) {
-      return 'WebSocket HTTP 404 en ' + wsUrl + ': la app no está publicada o falta el servidor puente.';
+    const res = await fetch(httpUrl);
+    if (!res.ok) {
+      return 'WebSocket HTTP ' + res.status + ' en ' + wsUrl + ': verifica el puente local en puerto 3000.';
     }
     return 'WebSocket falló en ' + wsUrl + ' (salud HTTP ' + res.status + ').';
   } catch {
-    return 'No se pudo conectar con ' + wsUrl + '. Verifica que el servidor puente esté activo.';
+    return 'No se pudo conectar con ' + wsUrl + '. Verifica que "npm start" esté ejecutándose en tu laptop.';
   }
 }
 
@@ -786,7 +784,7 @@ chrome.runtime.onMessage.addListener(async (msg) => {
           activeReceivers = data.receivers;
         } else if (data.type === 'receiver-joined') {
           const pc = new RTCPeerConnection({
-            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+            iceServers: [],
           });
           peers.set(data.peerId, pc);
           activeStream.getAudioTracks().forEach((track) => pc.addTrack(track, activeStream));
@@ -856,19 +854,19 @@ function cleanup() {
     {
       path: 'manifest.json',
       language: 'json',
-      description: 'Manifest V3 con desktopCapture (todo el navegador) y tabCapture',
+      description: 'Manifest V3 local-only con desktopCapture y tabCapture',
       content: JSON.stringify(manifest, null, 2),
     },
     {
       path: 'popup.html',
       language: 'html',
-      description: 'Selector de modo, servidor puente editable con prueba en vivo y diagnóstico',
+      description: 'Selector de modo, puente Wi-Fi local con detección de IP y diagnóstico',
       content: popupHtml,
     },
     {
       path: 'popup.js',
       language: 'javascript',
-      description: 'Valida servidor puente (/api/health), captura desktop/tab y copia diagnóstico',
+      description: 'Valida puente local (/api/health y /api/network-info) y captura audio',
       content: popupJs,
     },
     {
@@ -880,13 +878,13 @@ function cleanup() {
     {
       path: 'offscreen.html',
       language: 'html',
-      description: 'Contenedor offscreen requerido por Chrome MV3 para WebRTC/WS',
+      description: 'Contenedor offscreen requerido por Chrome MV3 para WebRTC/WS local',
       content: offscreenHtml,
     },
     {
       path: 'offscreen.js',
       language: 'javascript',
-      description: 'Captura el audio del navegador/sistema y diagnostica errores WebSocket',
+      description: 'Captura el audio del navegador y transmite por WebRTC/WS local sin nube',
       content: offscreenJs,
     },
   ];

@@ -1,10 +1,7 @@
 const LOCAL_SERVER_URL = 'http://localhost:3000';
-const CLOUD_SERVER_URL = 'https://ais-pre-eqopg3zyc7utrib2ilmkpk-197474785049.us-west2.run.app';
 const EXT_BUILD_DATE = '2026-11-22';
 
 const serverInput = document.getElementById('serverUrl');
-const presetLocalBtn = document.getElementById('presetLocalBtn');
-const presetCloudBtn = document.getElementById('presetCloudBtn');
 const checkServerBtn = document.getElementById('checkServerBtn');
 const serverStatusEl = document.getElementById('serverStatus');
 const roomInput = document.getElementById('roomCode');
@@ -28,6 +25,23 @@ function randomCode() {
     out += chars[Math.floor(Math.random() * chars.length)];
   }
   return out;
+}
+
+function isLocalHttpAddress(rawUrl) {
+  try {
+    const u = new URL(rawUrl);
+    const h = u.hostname;
+    return (
+      u.protocol === 'http:' &&
+      (h === 'localhost' ||
+        h === '127.0.0.1' ||
+        h.startsWith('192.168.') ||
+        h.startsWith('10.') ||
+        /^172\.(1[6-9]|2\d|3[0-1])\./.test(h))
+    );
+  } catch {
+    return false;
+  }
 }
 
 function normalizeHttpUrl(rawUrl) {
@@ -55,61 +69,57 @@ async function logExtensionError(message) {
 
 async function checkServerReachability(rawUrl) {
   const baseUrl = normalizeHttpUrl(rawUrl);
-  if (baseUrl.includes('ais-dev-')) {
+  if (!isLocalHttpAddress(baseUrl)) {
     serverStatusEl.className = 'server-status err';
     serverStatusEl.textContent =
-      'URL privada (ais-dev) bloqueada por login. Usa Wi-Fi Local (:3000) o publica la app.';
+      'Usa una dirección local de tu red Wi-Fi (ej. http://localhost:3000 o http://192.168.x.x:3000).';
     return false;
   }
 
   serverStatusEl.className = 'server-status';
-  serverStatusEl.textContent = 'Probando conexión con el puente...';
+  serverStatusEl.textContent = 'Probando puente local...';
 
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 3500);
+    const timer = setTimeout(() => controller.abort(), 3000);
     const res = await fetch(`${baseUrl}/api/health`, {
       method: 'GET',
-      redirect: 'manual',
       signal: controller.signal,
     });
     clearTimeout(timer);
 
-    if (res.type === 'opaqueredirect' || res.status === 302 || res.status === 401 || res.status === 403) {
-      serverStatusEl.className = 'server-status err';
-      serverStatusEl.textContent =
-        `La URL exige autenticación (HTTP ${res.status || 302}). Usa Wi-Fi Local o publicación pública.`;
-      return false;
-    }
-
-    if (res.status === 404) {
-      serverStatusEl.className = 'server-status err';
-      serverStatusEl.textContent =
-        'HTTP 404: El servidor aún no está publicado en esta URL. Usa Wi-Fi Local ("npm start").';
-      return false;
-    }
-
     if (!res.ok) {
       serverStatusEl.className = 'server-status err';
-      serverStatusEl.textContent = `El servidor respondió HTTP ${res.status}.`;
+      serverStatusEl.textContent = `El puente respondió HTTP ${res.status}. Verifica que sea WaveBridge en puerto 3000.`;
       return false;
     }
 
     const json = await res.json();
     if (json && json.ok) {
+      let lanTip = '';
+      try {
+        const netRes = await fetch(`${baseUrl}/api/network-info`);
+        if (netRes.ok) {
+          const netJson = await netRes.json();
+          if (Array.isArray(netJson.lanUrls) && netJson.lanUrls.length > 0) {
+            lanTip = ` · IP Wi-Fi para Android: ${netJson.lanUrls[0]}`;
+          }
+        }
+      } catch {
+        // ignore optional LAN info error
+      }
       serverStatusEl.className = 'server-status ok';
-      serverStatusEl.textContent = `Puente operativo (${json.activeRooms ?? 0} salas activas).`;
+      serverStatusEl.textContent = `Puente local activo${lanTip}`;
       return true;
     }
 
     serverStatusEl.className = 'server-status err';
-    serverStatusEl.textContent = 'Respuesta inesperada del servidor puente.';
+    serverStatusEl.textContent = 'Respuesta inesperada del servidor local.';
     return false;
   } catch {
     serverStatusEl.className = 'server-status err';
-    serverStatusEl.textContent = baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1') || baseUrl.includes('192.168.')
-      ? 'No responde en red local. Ejecuta "npm start" en tu laptop.'
-      : 'No se pudo contactar con el servidor puente.';
+    serverStatusEl.textContent =
+      'Puente local apagado. Ejecuta "npm start" en la carpeta del proyecto en tu laptop.';
     return false;
   }
 }
@@ -130,18 +140,6 @@ function setMode(mode) {
 modeDesktopBtn.addEventListener('click', () => setMode('desktop'));
 modeTabBtn.addEventListener('click', () => setMode('tab'));
 
-presetLocalBtn.addEventListener('click', async () => {
-  serverInput.value = LOCAL_SERVER_URL;
-  await chrome.storage.local.set({ serverUrl: LOCAL_SERVER_URL });
-  checkServerReachability(LOCAL_SERVER_URL);
-});
-
-presetCloudBtn.addEventListener('click', async () => {
-  serverInput.value = CLOUD_SERVER_URL;
-  await chrome.storage.local.set({ serverUrl: CLOUD_SERVER_URL });
-  checkServerReachability(CLOUD_SERVER_URL);
-});
-
 checkServerBtn.addEventListener('click', async () => {
   const clean = normalizeHttpUrl(serverInput.value);
   serverInput.value = clean;
@@ -160,7 +158,7 @@ chrome.storage.local.get(
   ['roomCode', 'serverUrl', 'streaming', 'captureMode', 'errorLogs', 'lastError'],
   (data) => {
     const savedUrl =
-      data.serverUrl && !String(data.serverUrl).includes('ais-dev-')
+      data.serverUrl && isLocalHttpAddress(data.serverUrl)
         ? data.serverUrl
         : LOCAL_SERVER_URL;
     serverInput.value = savedUrl;
@@ -191,7 +189,7 @@ function updateUi(streaming, errorMessage) {
 
   if (streaming) {
     statusEl.className = 'status';
-    statusEl.textContent = `Transmitiendo audio en sala ${roomInput.value}`;
+    statusEl.textContent = `Transmitiendo en Wi-Fi local · Sala ${roomInput.value}`;
   } else if (errorMessage) {
     statusEl.className = 'status err';
     statusEl.textContent = errorMessage;
@@ -221,7 +219,7 @@ toggleBtn.addEventListener('click', async () => {
 
   const reachable = await checkServerReachability(serverUrl);
   if (!reachable) {
-    const errMsg = serverStatusEl.textContent || 'Servidor puente no disponible.';
+    const errMsg = serverStatusEl.textContent || 'Puente local no disponible.';
     updateUi(false, errMsg);
     await logExtensionError(`Servidor (${serverUrl}): ${errMsg}`);
     return;
@@ -237,7 +235,7 @@ toggleBtn.addEventListener('click', async () => {
         return;
       }
       statusEl.className = 'status';
-      statusEl.textContent = 'Conectando con el servidor puente...';
+      statusEl.textContent = 'Conectando con el puente local...';
       chrome.runtime.sendMessage(
         {
           type: 'START_CAPTURE',
@@ -248,7 +246,7 @@ toggleBtn.addEventListener('click', async () => {
         },
         (res) => {
           if (res && res.ok) {
-            statusEl.textContent = 'Conectando WebSocket...';
+            statusEl.textContent = 'Conectando WebSocket local...';
           } else {
             updateUi(false, 'No se pudo iniciar la captura offscreen.');
           }
@@ -264,7 +262,7 @@ toggleBtn.addEventListener('click', async () => {
         return;
       }
       statusEl.className = 'status';
-      statusEl.textContent = 'Conectando con el servidor puente...';
+      statusEl.textContent = 'Conectando con el puente local...';
       chrome.runtime.sendMessage(
         {
           type: 'START_CAPTURE',
@@ -275,7 +273,7 @@ toggleBtn.addEventListener('click', async () => {
         },
         (res) => {
           if (res && res.ok) {
-            statusEl.textContent = 'Conectando WebSocket...';
+            statusEl.textContent = 'Conectando WebSocket local...';
           } else {
             updateUi(false, 'No se pudo iniciar la captura offscreen.');
           }

@@ -21,13 +21,25 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.google.android.material.button.MaterialButton
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.net.HttpURLConnection
+import java.net.Inet4Address
+import java.net.NetworkInterface
+import java.net.URL
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var etRoomCode: EditText
     private lateinit var etServerUrl: EditText
-    private lateinit var btnPresetLocal: MaterialButton
-    private lateinit var btnPresetCloud: MaterialButton
+    private lateinit var btnScanLan: MaterialButton
     private lateinit var btnConnect: MaterialButton
     private lateinit var btnMute: MaterialButton
     private lateinit var btnDiagnostics: MaterialButton
@@ -38,6 +50,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var seekVolume: SeekBar
 
     private val prefs by lazy { getSharedPreferences("wavebridge_prefs", Context.MODE_PRIVATE) }
+    private val uiScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private var scanJob: Job? = null
 
     private lateinit var audioManager: AudioManager
     private var isMuted = false
@@ -80,8 +94,7 @@ class MainActivity : AppCompatActivity() {
 
         etRoomCode = findViewById(R.id.etRoomCode)
         etServerUrl = findViewById(R.id.etServerUrl)
-        btnPresetLocal = findViewById(R.id.btnPresetLocal)
-        btnPresetCloud = findViewById(R.id.btnPresetCloud)
+        btnScanLan = findViewById(R.id.btnScanLan)
         btnConnect = findViewById(R.id.btnConnect)
         btnMute = findViewById(R.id.btnMute)
         btnDiagnostics = findViewById(R.id.btnDiagnostics)
@@ -94,7 +107,7 @@ class MainActivity : AppCompatActivity() {
         tvAppVersion.text = "v${BuildConfig.VERSION_NAME} · ${BuildConfig.BUILD_DATE}"
 
         val savedServer = prefs.getString("server_url", null)
-        if (!savedServer.isNullOrBlank()) {
+        if (!savedServer.isNullOrBlank() && isLocalLanUrl(savedServer)) {
             etServerUrl.setText(savedServer)
         }
         val savedRoom = prefs.getString("room_code", null)
@@ -112,18 +125,8 @@ class MainActivity : AppCompatActivity() {
         }
         updateConnectButtonUi()
 
-        btnPresetLocal.setOnClickListener {
-            val current = etServerUrl.text.toString().trim()
-            if (!current.startsWith("http://192.168.")) {
-                etServerUrl.setText("http://192.168.1.50:3000")
-            }
-            etServerUrl.requestFocus()
-            etServerUrl.setSelection(etServerUrl.text.length)
-            Toast.makeText(this, "Ajusta la IP Wi-Fi de tu laptop (puerto 3000)", Toast.LENGTH_SHORT).show()
-        }
-
-        btnPresetCloud.setOnClickListener {
-            etServerUrl.setText(getString(R.string.default_server_url))
+        btnScanLan.setOnClickListener {
+            scanLocalWifiForBridge()
         }
 
         btnConnect.setOnClickListener {
@@ -141,8 +144,8 @@ class MainActivity : AppCompatActivity() {
                     AudioBridgeService.recordError(msg)
                     return@setOnClickListener
                 }
-                if (serverUrl.contains("ais-dev-")) {
-                    val msg = "La URL ais-dev requiere sesión privada. Usa tu IP Wi-Fi local o la URL pública."
+                if (!isLocalLanUrl(serverUrl)) {
+                    val msg = "Usa la IP local Wi-Fi de tu laptop (ej. http://192.168.1.50:3000)"
                     tvConnectionStatus.text = msg
                     AudioBridgeService.recordError(msg)
                     return@setOnClickListener
@@ -182,6 +185,110 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun scanLocalWifiForBridge() {
+        scanJob?.cancel()
+        btnScanLan.isEnabled = false
+        btnScanLan.text = "Buscando PC en Wi-Fi..."
+        tvConnectionStatus.text = "Escaneando red Wi-Fi local (puerto 3000)..."
+
+        scanJob = uiScope.launch {
+            val foundUrl = withContext(Dispatchers.IO) {
+                discoverLocalBridgeOnSubnet()
+            }
+            btnScanLan.isEnabled = true
+            btnScanLan.text = "Buscar PC automáticamente en Wi-Fi"
+            if (foundUrl != null) {
+                etServerUrl.setText(foundUrl)
+                prefs.edit().putString("server_url", foundUrl).apply()
+                tvConnectionStatus.text = "Laptop encontrada: $foundUrl"
+                Toast.makeText(this@MainActivity, "PC detectada en $foundUrl", Toast.LENGTH_SHORT).show()
+            } else {
+                val msg = "No se encontró el puente en tu Wi-Fi. Asegúrate de ejecutar 'npm start' en la laptop."
+                tvConnectionStatus.text = msg
+                AudioBridgeService.recordError(msg)
+            }
+        }
+    }
+
+    private suspend fun discoverLocalBridgeOnSubnet(): String? {
+        val localIp = findLocalWifiIpv4() ?: return null
+        val dotIndex = localIp.lastIndexOf('.')
+        if (dotIndex <= 0) return null
+        val prefix = localIp.substring(0, dotIndex)
+        val selfOctet = localIp.substring(dotIndex + 1).toIntOrNull()
+
+        val candidates = (1..254).filter { it != selfOctet }.map { "$prefix.$it" }
+        for (batch in candidates.chunked(32)) {
+            val found = kotlinx.coroutines.coroutineScope {
+                batch.map { host ->
+                    async(Dispatchers.IO) {
+                        val url = "http://$host:3000"
+                        if (probeWaveBridgeHealth(url)) url else null
+                    }
+                }.awaitAll().firstOrNull { it != null }
+            }
+            if (found != null) return found
+        }
+        return null
+    }
+
+    private fun probeWaveBridgeHealth(baseUrl: String): Boolean {
+        var conn: HttpURLConnection? = null
+        return try {
+            conn = (URL("$baseUrl/api/health").openConnection() as HttpURLConnection).apply {
+                connectTimeout = 350
+                readTimeout = 450
+                requestMethod = "GET"
+            }
+            if (conn.responseCode != 200) return false
+            val body = conn.inputStream.bufferedReader().use { it.readText() }
+            body.contains("\"service\":\"wavebridge\"") || body.contains("\"ok\":true")
+        } catch (_: Exception) {
+            false
+        } finally {
+            conn?.disconnect()
+        }
+    }
+
+    private fun findLocalWifiIpv4(): String? {
+        return try {
+            val interfaces = NetworkInterface.getNetworkInterfaces() ?: return null
+            var fallback: String? = null
+            while (interfaces.hasMoreElements()) {
+                val iface = interfaces.nextElement()
+                if (!iface.isUp || iface.isLoopback) continue
+                val addrs = iface.inetAddresses
+                while (addrs.hasMoreElements()) {
+                    val addr = addrs.nextElement()
+                    if (addr is Inet4Address && !addr.isLoopbackAddress) {
+                        val ip = addr.hostAddress ?: continue
+                        if (ip.startsWith("192.168.") || ip.startsWith("10.")) return ip
+                        if (ip.startsWith("172.")) fallback = ip
+                    }
+                }
+            }
+            fallback
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun isLocalLanUrl(rawUrl: String): Boolean {
+        return try {
+            val uri = URL(rawUrl.trim())
+            val host = uri.host ?: return false
+            uri.protocol == "http" && (
+                host.startsWith("192.168.") ||
+                    host.startsWith("10.") ||
+                    host == "localhost" ||
+                    host == "127.0.0.1" ||
+                    Regex("^172\\.(1[6-9]|2\\d|3[0-1])\\.").containsMatchIn(host)
+                )
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     private fun shareDiagnosticReport() {
         val errors = AudioBridgeService.getErrorHistory()
         val report = buildString {
@@ -192,7 +299,7 @@ class MainActivity : AppCompatActivity() {
             appendLine("Estado: ${tvConnectionStatus.text}")
             appendLine("Telemetría: ${tvTelemetry.text}")
             appendLine("Sala: ${etRoomCode.text}")
-            appendLine("Servidor: ${etServerUrl.text}")
+            appendLine("Servidor local: ${etServerUrl.text}")
             appendLine()
             if (errors.isEmpty()) {
                 appendLine("Errores registrados: ninguno en esta sesión.")
@@ -237,6 +344,11 @@ class MainActivity : AppCompatActivity() {
         audioManager.unregisterAudioDeviceCallback(audioDeviceCallback)
     }
 
+    override fun onDestroy() {
+        uiScope.cancel()
+        super.onDestroy()
+    }
+
     private fun handleIncomingIntent(intent: Intent?) {
         val data = intent?.data ?: return
         val room = data.getQueryParameter("room")
@@ -244,7 +356,7 @@ class MainActivity : AppCompatActivity() {
             etRoomCode.setText(room.uppercase().take(6))
         }
         val server = data.getQueryParameter("server")
-        if (!server.isNullOrBlank() && !server.contains("ais-dev-")) {
+        if (!server.isNullOrBlank() && isLocalLanUrl(server)) {
             etServerUrl.setText(server.trim())
         }
     }
@@ -262,6 +374,7 @@ class MainActivity : AppCompatActivity() {
         btnConnect.text = if (isConnected) "Desconectar receptor" else "Conectar al emisor"
         etRoomCode.isEnabled = !isConnected
         etServerUrl.isEnabled = !isConnected
+        btnScanLan.isEnabled = !isConnected
     }
 
     private fun refreshBluetoothOutput() {
