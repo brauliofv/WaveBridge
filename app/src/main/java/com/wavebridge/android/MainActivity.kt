@@ -2,6 +2,8 @@ package com.wavebridge.android
 
 import android.Manifest
 import android.content.BroadcastReceiver
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -14,6 +16,7 @@ import android.os.Bundle
 import android.widget.EditText
 import android.widget.SeekBar
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -25,9 +28,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var etServerUrl: EditText
     private lateinit var btnConnect: MaterialButton
     private lateinit var btnMute: MaterialButton
+    private lateinit var btnDiagnostics: MaterialButton
     private lateinit var tvBluetoothOutput: TextView
     private lateinit var tvConnectionStatus: TextView
     private lateinit var tvTelemetry: TextView
+    private lateinit var tvAppVersion: TextView
     private lateinit var seekVolume: SeekBar
 
     private lateinit var audioManager: AudioManager
@@ -73,10 +78,14 @@ class MainActivity : AppCompatActivity() {
         etServerUrl = findViewById(R.id.etServerUrl)
         btnConnect = findViewById(R.id.btnConnect)
         btnMute = findViewById(R.id.btnMute)
+        btnDiagnostics = findViewById(R.id.btnDiagnostics)
         tvBluetoothOutput = findViewById(R.id.tvBluetoothOutput)
         tvConnectionStatus = findViewById(R.id.tvConnectionStatus)
         tvTelemetry = findViewById(R.id.tvTelemetry)
+        tvAppVersion = findViewById(R.id.tvAppVersion)
         seekVolume = findViewById(R.id.seekVolume)
+
+        tvAppVersion.text = "v${BuildConfig.VERSION_NAME} · ${BuildConfig.BUILD_DATE}"
 
         audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
         requestRequiredPermissions()
@@ -98,7 +107,9 @@ class MainActivity : AppCompatActivity() {
                 val room = etRoomCode.text.toString().uppercase().replace(Regex("[^A-Z0-9]"), "")
                 val serverUrl = etServerUrl.text.toString().trim()
                 if (room.length != 6) {
+                    val msg = "Código inválido: debe tener 6 caracteres"
                     tvConnectionStatus.text = "Ingresa un código válido de 6 caracteres"
+                    AudioBridgeService.recordError(msg)
                     return@setOnClickListener
                 }
                 val startIntent = Intent(this, AudioBridgeService::class.java).apply {
@@ -126,6 +137,42 @@ class MainActivity : AppCompatActivity() {
             btnMute.text = if (isMuted) "Reactivar audio" else "Silenciar audio"
             sendVolumeUpdate(seekVolume.progress / 100f, isMuted)
         }
+
+        btnDiagnostics.setOnClickListener {
+            shareDiagnosticReport()
+        }
+    }
+
+    private fun shareDiagnosticReport() {
+        val errors = AudioBridgeService.getErrorHistory()
+        val report = buildString {
+            appendLine("=== WaveBridge Android Diagnóstico ===")
+            appendLine("App: v${BuildConfig.VERSION_NAME} (${BuildConfig.BUILD_DATE})")
+            appendLine("Dispositivo: ${Build.MANUFACTURER} ${Build.MODEL} (Android ${Build.VERSION.RELEASE})")
+            appendLine("Salida: ${tvBluetoothOutput.text}")
+            appendLine("Estado: ${tvConnectionStatus.text}")
+            appendLine("Telemetría: ${tvTelemetry.text}")
+            appendLine("Sala: ${etRoomCode.text}")
+            appendLine("Servidor: ${etServerUrl.text}")
+            appendLine()
+            if (errors.isEmpty()) {
+                appendLine("Errores registrados: ninguno en esta sesión.")
+            } else {
+                appendLine("Errores registrados (${errors.size}):")
+                errors.forEach { appendLine("- $it") }
+            }
+        }
+
+        val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("WaveBridge Diagnóstico", report))
+        Toast.makeText(this, "Diagnóstico copiado al portapapeles", Toast.LENGTH_SHORT).show()
+
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, "WaveBridge Android Diagnóstico v${BuildConfig.VERSION_NAME}")
+            putExtra(Intent.EXTRA_TEXT, report)
+        }
+        startActivity(Intent.createChooser(shareIntent, "Compartir diagnóstico"))
     }
 
     override fun onNewIntent(intent: Intent) {

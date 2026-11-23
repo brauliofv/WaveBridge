@@ -55,6 +55,23 @@ class AudioBridgeService : Service() {
         @Volatile
         var currentRoomCode = ""
             private set
+
+        private val errorHistory = ArrayDeque<String>()
+
+        fun recordError(message: String) {
+            synchronized(errorHistory) {
+                val ts = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US)
+                    .format(java.util.Date())
+                errorHistory.addLast("[$ts] $message")
+                while (errorHistory.size > 15) {
+                    errorHistory.removeFirst()
+                }
+            }
+        }
+
+        fun getErrorHistory(): List<String> = synchronized(errorHistory) {
+            errorHistory.toList()
+        }
     }
 
     private val client = OkHttpClient.Builder()
@@ -190,7 +207,9 @@ class AudioBridgeService : Service() {
                             }
                         }
                         "error" -> {
-                            statusText = json.optString("message", "Error de conexión")
+                            val errMsg = json.optString("message", "Error de conexión")
+                            statusText = errMsg
+                            recordError("Servidor: $errMsg")
                             broadcastState()
                         }
                     }
@@ -202,7 +221,11 @@ class AudioBridgeService : Service() {
                 val frame = AudioPacketDecoder.decode(bytes.toByteArray()) ?: return
                 val count = packetsCounter.incrementAndGet()
                 audioExecutor.execute {
-                    playPcmFrame(frame)
+                    try {
+                        playPcmFrame(frame)
+                    } catch (e: Exception) {
+                        recordError("AudioTrack: ${e.localizedMessage ?: e.javaClass.simpleName}")
+                    }
                 }
                 if (count % 25L == 0L) {
                     broadcastState()
@@ -213,7 +236,9 @@ class AudioBridgeService : Service() {
                 isConnectedFlag.set(false)
                 currentIsConnected = false
                 senderConnectedFlag.set(false)
-                statusText = "Error de conexión: ${t.localizedMessage ?: "sin red"}"
+                val detail = t.localizedMessage ?: t.javaClass.simpleName
+                statusText = "Error de conexión: $detail"
+                recordError("WebSocket: $detail")
                 broadcastState()
             }
 

@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "WaveBridge — Audio de Chrome a Bluetooth",
+  "version": "1.0.0",
+  "description": "Captura el audio de cualquier pestaña de Chrome y lo transmite por Wi-Fi con baja latencia a tu smartphone Android con audífonos Bluetooth.",
+  "permissions": [
+    "tabCapture",
+    "activeTab",
+    "offscreen",
+    "storage"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "WaveBridge Emisor"
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}

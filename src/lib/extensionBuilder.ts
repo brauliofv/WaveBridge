@@ -1,4 +1,5 @@
 import JSZip from 'jszip';
+import { EXTENSION_RELEASE_DATE, EXTENSION_VERSION } from './appMeta';
 
 export interface ExtensionFile {
   path: string;
@@ -14,7 +15,7 @@ export function buildChromeExtensionFiles(bridgeOrigin: string): ExtensionFile[]
   const manifest = {
     manifest_version: 3,
     name: 'WaveBridge — Audio de Chrome a Bluetooth',
-    version: '1.0.0',
+    version: EXTENSION_VERSION,
     description:
       'Captura el audio de cualquier pestaña de Chrome y lo transmite por Wi-Fi con baja latencia a tu smartphone Android con audífonos Bluetooth.',
     permissions: ['tabCapture', 'activeTab', 'offscreen', 'storage'],
@@ -72,7 +73,7 @@ export function buildChromeExtensionFiles(bridgeOrigin: string): ExtensionFile[]
         text-transform: uppercase;
         margin-bottom: 12px;
       }
-      button {
+      button.primary {
         width: 100%;
         padding: 10px 14px;
         border: 0;
@@ -83,7 +84,7 @@ export function buildChromeExtensionFiles(bridgeOrigin: string): ExtensionFile[]
         font-size: 13px;
         cursor: pointer;
       }
-      button.stop {
+      button.primary.stop {
         background: #dc2626;
         color: #fff;
       }
@@ -99,6 +100,28 @@ export function buildChromeExtensionFiles(bridgeOrigin: string): ExtensionFile[]
         color: #38bdf8;
         text-decoration: none;
       }
+      .footer {
+        margin-top: 14px;
+        padding-top: 10px;
+        border-top: 1px solid #1f2630;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 10px;
+        color: #6b7280;
+      }
+      .diag-btn {
+        background: none;
+        border: 0;
+        padding: 0;
+        color: #9ca3af;
+        font-size: 10px;
+        cursor: pointer;
+        text-decoration: underline;
+      }
+      .diag-btn:hover {
+        color: #f4f5f7;
+      }
     </style>
   </head>
   <body>
@@ -106,18 +129,28 @@ export function buildChromeExtensionFiles(bridgeOrigin: string): ExtensionFile[]
     <p>Transmite el audio de esta pestaña por Wi-Fi hacia tu smartphone Android.</p>
     <label for="roomCode">Código de sala (6 caracteres)</label>
     <input id="roomCode" maxlength="6" placeholder="WVB492" />
-    <button id="toggleBtn">Transmitir pestaña activa</button>
+    <button id="toggleBtn" class="primary">Transmitir pestaña activa</button>
     <div id="status" class="status">Listo para capturar audio</div>
     <a class="link" href="${normalizedOrigin}/?mode=receiver" target="_blank" rel="noreferrer">
       Abrir receptor móvil en navegador
     </a>
+    <div class="footer">
+      <span id="versionMeta">v${EXTENSION_VERSION} · ${EXTENSION_RELEASE_DATE}</span>
+      <button id="copyDiagBtn" class="diag-btn" type="button">Reportar error</button>
+    </div>
     <script src="popup.js"></script>
   </body>
 </html>`;
 
-  const popupJs = `const roomInput = document.getElementById('roomCode');
+  const popupJs = `const EXT_BUILD_DATE = '${EXTENSION_RELEASE_DATE}';
+const roomInput = document.getElementById('roomCode');
 const toggleBtn = document.getElementById('toggleBtn');
 const statusEl = document.getElementById('status');
+const versionMetaEl = document.getElementById('versionMeta');
+const copyDiagBtn = document.getElementById('copyDiagBtn');
+
+const manifestVersion = chrome.runtime.getManifest().version || '${EXTENSION_VERSION}';
+versionMetaEl.textContent = 'v' + manifestVersion + ' · ' + EXT_BUILD_DATE;
 
 function randomCode() {
   const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -128,14 +161,24 @@ function randomCode() {
   return out;
 }
 
-chrome.storage.local.get(['roomCode', 'streaming'], (data) => {
+async function logExtensionError(message) {
+  const data = await chrome.storage.local.get(['errorLogs']);
+  const logs = Array.isArray(data.errorLogs) ? data.errorLogs : [];
+  logs.push('[' + new Date().toISOString() + '] ' + message);
+  await chrome.storage.local.set({ errorLogs: logs.slice(-15) });
+}
+
+chrome.storage.local.get(['roomCode', 'streaming', 'errorLogs'], (data) => {
   roomInput.value = data.roomCode || randomCode();
   updateUi(Boolean(data.streaming));
+  if (Array.isArray(data.errorLogs) && data.errorLogs.length > 0) {
+    copyDiagBtn.textContent = 'Diagnóstico (' + data.errorLogs.length + ')';
+  }
 });
 
 function updateUi(streaming) {
   toggleBtn.textContent = streaming ? 'Detener transmisión' : 'Transmitir pestaña activa';
-  toggleBtn.className = streaming ? 'stop' : '';
+  toggleBtn.className = streaming ? 'primary stop' : 'primary';
   statusEl.textContent = streaming
     ? 'Transmitiendo audio en sala ' + roomInput.value
     : 'Listo para capturar la pestaña actual';
@@ -155,9 +198,11 @@ toggleBtn.addEventListener('click', async () => {
   }
 
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  chrome.tabCapture.getMediaStreamId({ targetTabId: tab.id }, (streamId) => {
+  chrome.tabCapture.getMediaStreamId({ targetTabId: tab.id }, async (streamId) => {
     if (chrome.runtime.lastError || !streamId) {
-      statusEl.textContent = 'Error al capturar pestaña: ' + (chrome.runtime.lastError?.message || 'sin permisos');
+      const errMsg = chrome.runtime.lastError?.message || 'sin permisos';
+      statusEl.textContent = 'Error al capturar pestaña: ' + errMsg;
+      await logExtensionError('tabCapture: ' + errMsg);
       return;
     }
     chrome.runtime.sendMessage(
@@ -172,6 +217,25 @@ toggleBtn.addEventListener('click', async () => {
       }
     );
   });
+});
+
+copyDiagBtn.addEventListener('click', async () => {
+  const data = await chrome.storage.local.get(['roomCode', 'streaming', 'errorLogs']);
+  const logs = Array.isArray(data.errorLogs) ? data.errorLogs : [];
+  const report = [
+    '=== WaveBridge Extensión Diagnóstico ===',
+    'Versión: v' + manifestVersion + ' (' + EXT_BUILD_DATE + ')',
+    'Sala: ' + (data.roomCode || 'N/A'),
+    'Transmitiendo: ' + (data.streaming ? 'sí' : 'no'),
+    'Navegador: ' + navigator.userAgent,
+    '',
+    logs.length > 0 ? 'Errores recientes:\\n' + logs.join('\\n') : 'Sin errores recientes.',
+  ].join('\\n');
+  await navigator.clipboard.writeText(report);
+  copyDiagBtn.textContent = 'Copiado';
+  setTimeout(() => {
+    copyDiagBtn.textContent = logs.length > 0 ? 'Diagnóstico (' + logs.length + ')' : 'Reportar error';
+  }, 1800);
 });`;
 
   const backgroundJs = `async function ensureOffscreen() {
@@ -187,17 +251,32 @@ toggleBtn.addEventListener('click', async () => {
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.type === 'START_CAPTURE') {
-    ensureOffscreen().then(() => {
-      chrome.runtime.sendMessage({ ...msg, target: 'offscreen' });
-      chrome.storage.local.set({ streaming: true });
-      sendResponse({ ok: true });
-    });
+    ensureOffscreen()
+      .then(() => {
+        chrome.runtime.sendMessage({ ...msg, target: 'offscreen' });
+        chrome.storage.local.set({ streaming: true });
+        sendResponse({ ok: true });
+      })
+      .catch(async (err) => {
+        const data = await chrome.storage.local.get(['errorLogs']);
+        const logs = Array.isArray(data.errorLogs) ? data.errorLogs : [];
+        logs.push('[' + new Date().toISOString() + '] offscreen: ' + (err?.message || String(err)));
+        await chrome.storage.local.set({ errorLogs: logs.slice(-15), streaming: false });
+        sendResponse({ ok: false });
+      });
     return true;
   }
   if (msg.type === 'STOP_CAPTURE') {
     chrome.runtime.sendMessage({ type: 'OFFSCREEN_STOP', target: 'offscreen' });
     chrome.storage.local.set({ streaming: false });
     sendResponse({ ok: true });
+  }
+  if (msg.type === 'LOG_ERROR' && msg.message) {
+    chrome.storage.local.get(['errorLogs'], (data) => {
+      const logs = Array.isArray(data.errorLogs) ? data.errorLogs : [];
+      logs.push('[' + new Date().toISOString() + '] ' + msg.message);
+      chrome.storage.local.set({ errorLogs: logs.slice(-15) });
+    });
   }
 });`;
 
@@ -212,6 +291,10 @@ let audioCtx = null;
 let socket = null;
 const peers = new Map();
 
+function reportError(message) {
+  chrome.runtime.sendMessage({ type: 'LOG_ERROR', message });
+}
+
 chrome.runtime.onMessage.addListener(async (msg) => {
   if (msg.target !== 'offscreen') return;
   if (msg.type === 'OFFSCREEN_STOP') {
@@ -220,66 +303,70 @@ chrome.runtime.onMessage.addListener(async (msg) => {
   }
   if (msg.type === 'START_CAPTURE') {
     cleanup();
-    activeStream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        mandatory: {
-          chromeMediaSource: 'tab',
-          chromeMediaSourceId: msg.streamId,
+    try {
+      activeStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          mandatory: {
+            chromeMediaSource: 'tab',
+            chromeMediaSourceId: msg.streamId,
+          },
         },
-      },
-      video: false,
-    });
+        video: false,
+      });
 
-    // Keep local tab playback audible on laptop if desired, or mute locally:
-    audioCtx = new AudioContext({ latencyHint: 'interactive' });
-    const src = audioCtx.createMediaStreamSource(activeStream);
-    src.connect(audioCtx.destination);
+      audioCtx = new AudioContext({ latencyHint: 'interactive' });
+      const src = audioCtx.createMediaStreamSource(activeStream);
+      src.connect(audioCtx.destination);
 
-    socket = new WebSocket(msg.wsUrl);
-    socket.onopen = () => {
-      socket.send(JSON.stringify({
-        type: 'join',
-        room: msg.roomCode,
-        role: 'sender',
-        deviceName: 'Extensión Chrome',
-      }));
-    };
-
-    socket.onmessage = async (event) => {
-      if (typeof event.data !== 'string') return;
-      const data = JSON.parse(event.data);
-      if (data.type === 'receiver-joined') {
-        const pc = new RTCPeerConnection({
-          iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
-        });
-        peers.set(data.peerId, pc);
-        activeStream.getAudioTracks().forEach((track) => pc.addTrack(track, activeStream));
-        pc.onicecandidate = (e) => {
-          if (e.candidate) {
-            socket.send(JSON.stringify({
-              type: 'signal',
-              targetId: data.peerId,
-              payload: { candidate: e.candidate },
-            }));
-          }
-        };
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
+      socket = new WebSocket(msg.wsUrl);
+      socket.onerror = () => reportError('WebSocket error al conectar con ' + msg.wsUrl);
+      socket.onopen = () => {
         socket.send(JSON.stringify({
-          type: 'signal',
-          targetId: data.peerId,
-          payload: { sdp: pc.localDescription },
+          type: 'join',
+          room: msg.roomCode,
+          role: 'sender',
+          deviceName: 'Extensión Chrome',
         }));
-      } else if (data.type === 'signal' && data.fromId) {
-        const pc = peers.get(data.fromId);
-        if (!pc) return;
-        if (data.payload.sdp) {
-          await pc.setRemoteDescription(new RTCSessionDescription(data.payload.sdp));
-        } else if (data.payload.candidate) {
-          await pc.addIceCandidate(new RTCIceCandidate(data.payload.candidate));
+      };
+
+      socket.onmessage = async (event) => {
+        if (typeof event.data !== 'string') return;
+        const data = JSON.parse(event.data);
+        if (data.type === 'receiver-joined') {
+          const pc = new RTCPeerConnection({
+            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+          });
+          peers.set(data.peerId, pc);
+          activeStream.getAudioTracks().forEach((track) => pc.addTrack(track, activeStream));
+          pc.onicecandidate = (e) => {
+            if (e.candidate) {
+              socket.send(JSON.stringify({
+                type: 'signal',
+                targetId: data.peerId,
+                payload: { candidate: e.candidate },
+              }));
+            }
+          };
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          socket.send(JSON.stringify({
+            type: 'signal',
+            targetId: data.peerId,
+            payload: { sdp: pc.localDescription },
+          }));
+        } else if (data.type === 'signal' && data.fromId) {
+          const pc = peers.get(data.fromId);
+          if (!pc) return;
+          if (data.payload.sdp) {
+            await pc.setRemoteDescription(new RTCSessionDescription(data.payload.sdp));
+          } else if (data.payload.candidate) {
+            await pc.addIceCandidate(new RTCIceCandidate(data.payload.candidate));
+          }
         }
-      }
-    };
+      };
+    } catch (err) {
+      reportError('offscreen capture: ' + (err?.message || String(err)));
+    }
   }
 });
 
@@ -310,13 +397,13 @@ function cleanup() {
     {
       path: 'popup.html',
       language: 'html',
-      description: 'Interfaz emergente de la extensión para vincular código de sala',
+      description: 'Interfaz emergente con código de sala, versión y reporte de errores',
       content: popupHtml,
     },
     {
       path: 'popup.js',
       language: 'javascript',
-      description: 'Captura el streamId de la pestaña activa y controla el servicio',
+      description: 'Captura el streamId, registra errores y copia diagnóstico',
       content: popupJs,
     },
     {
@@ -334,7 +421,7 @@ function cleanup() {
     {
       path: 'offscreen.js',
       language: 'javascript',
-      description: 'Captura el audio de la pestaña y lo transmite por WebRTC al smartphone',
+      description: 'Captura el audio de la pestaña y reporta errores al diagnóstico',
       content: offscreenJs,
     },
   ];

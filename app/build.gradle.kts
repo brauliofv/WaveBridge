@@ -13,6 +13,11 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0.0"
+        buildConfigField("String", "BUILD_DATE", "\"2026-11-22\"")
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     signingConfigs {

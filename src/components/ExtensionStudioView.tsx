@@ -4,6 +4,7 @@ import {
   buildChromeExtensionFiles,
   createExtensionZipBlob,
 } from '../lib/extensionBuilder';
+import { EXTENSION_RELEASE_DATE, EXTENSION_VERSION } from '../lib/appMeta';
 
 export function ExtensionStudioView() {
   const origin =
@@ -51,7 +52,10 @@ export function ExtensionStudioView() {
             Extensión de Chrome (Manifest V3) y App Android
           </h1>
           <p className="mt-1.5 text-sm text-[#9CA3AF] max-w-2xl">
-            Código completo listo para cargar en Chrome usando <code className="font-mono text-[#F4F5F7]">chrome.tabCapture</code> y documento offscreen, preconfigurado hacia este servidor puente.
+            Código completo listo para cargar en Chrome usando <code className="font-mono text-[#F4F5F7]">chrome.tabCapture</code> y documento offscreen, preconfigurado hacia este servidor puente.{' '}
+            <span className="font-mono text-xs text-[#6B7280] tabular-nums">
+              v{EXTENSION_VERSION} · {EXTENSION_RELEASE_DATE}
+            </span>
           </p>
         </div>
 

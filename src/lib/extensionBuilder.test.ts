@@ -25,4 +25,6 @@ test('buildChromeExtensionFiles produces valid MV3 manifest and offscreen files'
 
   const popupJs = files.find((f) => f.path === 'popup.js');
   assert.ok(popupJs?.content.includes('wss://wavebridge.local:3000/ws'));
+  assert.ok(popupJs?.content.includes('copyDiagBtn'));
+  assert.ok(popupJs?.content.includes('2026-11-22'));
 });
