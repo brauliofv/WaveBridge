@@ -4,23 +4,70 @@
     <meta charset="utf-8" />
     <title>WaveBridge Emisor</title>
     <style>
+      * {
+        box-sizing: border-box;
+      }
       body {
-        width: 348px;
+        width: 356px;
         margin: 0;
-        padding: 16px;
+        padding: 14px;
         background: #0b0d10;
         color: #f4f5f7;
         font-family: system-ui, -apple-system, sans-serif;
       }
+      .header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 10px;
+      }
       h1 {
         font-size: 16px;
-        margin: 0 0 4px 0;
+        margin: 0;
+        letter-spacing: -0.01em;
       }
-      p {
-        font-size: 12px;
+      .pill {
+        font-size: 10px;
+        font-weight: 700;
+        padding: 3px 8px;
+        border-radius: 999px;
+        background: #0e2a3a;
+        color: #38bdf8;
+        border: 1px solid rgba(56, 189, 248, 0.25);
+      }
+      .card {
+        background: #13171d;
+        border: 1px solid #1f2630;
+        border-radius: 12px;
+        padding: 11px 12px;
+        margin-bottom: 10px;
+      }
+      .card-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 8px;
+      }
+      .card-title {
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
         color: #9ca3af;
-        margin: 0 0 12px 0;
-        line-height: 1.4;
+      }
+      .collapse-btn {
+        background: none;
+        border: 1px solid #232933;
+        border-radius: 6px;
+        padding: 2px 8px;
+        color: #38bdf8;
+        font-size: 10px;
+        font-weight: 600;
+        cursor: pointer;
+        display: none;
+      }
+      .collapse-btn.visible {
+        display: inline-block;
       }
       label {
         display: block;
@@ -39,26 +86,29 @@
       }
       input {
         width: 100%;
-        box-sizing: border-box;
-        padding: 9px 11px;
+        padding: 8px 10px;
         border-radius: 8px;
         border: 1px solid #232933;
-        background: #13171d;
+        background: #0b0d10;
         color: #f4f5f7;
         font-size: 12px;
-        margin-bottom: 10px;
+        margin-bottom: 8px;
       }
       input.code {
         font-family: monospace;
         font-size: 15px;
         letter-spacing: 0.14em;
         text-transform: uppercase;
+        margin-bottom: 0;
+      }
+      input:disabled {
+        opacity: 0.55;
       }
       .check-btn {
         padding: 0 10px;
         border-radius: 8px;
         border: 1px solid #232933;
-        background: #13171d;
+        background: #0b0d10;
         color: #38bdf8;
         font-size: 11px;
         font-weight: 600;
@@ -73,9 +123,8 @@
         cursor: wait;
       }
       .server-status {
-        margin-bottom: 10px;
         font-size: 11px;
-        line-height: 1.4;
+        line-height: 1.35;
         color: #9ca3af;
       }
       .server-status.ok {
@@ -89,11 +138,11 @@
         align-items: center;
         justify-content: space-between;
         gap: 8px;
-        margin-bottom: 10px;
-        padding: 8px 10px;
+        margin-top: 8px;
+        padding: 7px 9px;
         border-radius: 8px;
         border: 1px solid #1f2630;
-        background: #13171d;
+        background: #0b0d10;
         font-size: 11px;
       }
       .lan-box.visible {
@@ -108,13 +157,13 @@
         display: grid;
         grid-template-columns: 1fr 1fr;
         gap: 6px;
-        margin-bottom: 10px;
+        margin-bottom: 9px;
       }
       .mode-btn {
         padding: 8px 6px;
         border-radius: 8px;
         border: 1px solid #232933;
-        background: #13171d;
+        background: #0b0d10;
         color: #9ca3af;
         font-size: 11px;
         font-weight: 600;
@@ -125,14 +174,73 @@
         background: rgba(14, 165, 233, 0.14);
         color: #f4f5f7;
       }
+      .mode-btn:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+      }
+      .audio-panel {
+        margin-top: 10px;
+        padding: 9px 10px;
+        border-radius: 9px;
+        background: #0b0d10;
+        border: 1px solid #1f2630;
+      }
+      .vol-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 11px;
+        color: #9ca3af;
+        margin-bottom: 4px;
+      }
+      .vol-value {
+        font-family: monospace;
+        font-weight: 700;
+        color: #38bdf8;
+      }
+      input[type='range'] {
+        width: 100%;
+        margin: 2px 0 0 0;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        accent-color: #0ea5e9;
+        cursor: pointer;
+      }
+      .pc-mute-wrap {
+        display: none;
+        margin-top: 9px;
+        padding-top: 8px;
+        border-top: 1px solid #1f2630;
+      }
+      .pc-mute-wrap.visible {
+        display: block;
+      }
+      .pc-mute-btn {
+        width: 100%;
+        padding: 8px 10px;
+        border-radius: 8px;
+        border: 1px solid #2a323d;
+        background: #13171d;
+        color: #f4f5f7;
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+        text-align: center;
+      }
+      .pc-mute-btn.muted {
+        border-color: #f59e0b;
+        background: rgba(245, 158, 11, 0.14);
+        color: #fde68a;
+      }
       button.primary {
         width: 100%;
         padding: 10px 14px;
         border: 0;
-        border-radius: 8px;
+        border-radius: 9px;
         background: #0ea5e9;
         color: #06121a;
-        font-weight: 600;
+        font-weight: 700;
         font-size: 13px;
         cursor: pointer;
       }
@@ -147,17 +255,24 @@
         line-height: 1.35;
       }
       .status {
-        margin-top: 10px;
+        margin-top: 8px;
         font-size: 12px;
         color: #38bdf8;
-        line-height: 1.4;
+        line-height: 1.35;
+        font-weight: 500;
+      }
+      .status.ok {
+        color: #34d399;
+      }
+      .status.warn {
+        color: #fbbf24;
       }
       .status.err {
         color: #f87171;
       }
       .footer {
-        margin-top: 14px;
-        padding-top: 10px;
+        margin-top: 10px;
+        padding-top: 8px;
         border-top: 1px solid #1f2630;
         display: flex;
         align-items: center;
@@ -180,41 +295,71 @@
     </style>
   </head>
   <body>
-    <h1>WaveBridge (Wi-Fi Local)</h1>
-    <p>Envía el audio del navegador directo a tu smartphone por Wi-Fi, sin terminal ni nube.</p>
-
-    <label>Conexión Wi-Fi</label>
-    <div class="modes">
-      <button id="targetDirectBtn" class="mode-btn active" type="button">Directo al móvil</button>
-      <button id="targetBridgeBtn" class="mode-btn" type="button">Puente PC (Plan B)</button>
+    <div class="header">
+      <h1>WaveBridge</h1>
+      <span class="pill">Wi-Fi Local</span>
     </div>
 
-    <label id="targetInputLabel" for="serverUrl">IP de tu móvil Android en Wi-Fi (puerto 8765)</label>
-    <div class="server-row">
-      <input id="serverUrl" type="text" placeholder="Ej. 192.168.100.194" />
-      <button id="checkServerBtn" class="check-btn" type="button">Buscar móvil</button>
-    </div>
-    <div id="serverStatus" class="server-status">Abre la app en Android y pulsa Buscar móvil.</div>
-    <div id="lanBox" class="lan-box">
-      <span>En Android usa: <code id="lanIpText">—</code></span>
-      <button id="copyLanBtn" class="check-btn" type="button">Copiar IP</button>
+    <!-- Card 1: Wi-Fi Destination -->
+    <div class="card">
+      <div class="card-head">
+        <span class="card-title">Destino Wi-Fi</span>
+        <button id="toggleNetBtn" class="collapse-btn" type="button">Ajustar red ▾</button>
+      </div>
+      <div id="networkBody">
+        <div class="modes">
+          <button id="targetDirectBtn" class="mode-btn active" type="button">Directo al móvil</button>
+          <button id="targetBridgeBtn" class="mode-btn" type="button">Puente PC (Plan B)</button>
+        </div>
+
+        <label id="targetInputLabel" for="serverUrl">IP de tu móvil Android en Wi-Fi (puerto 8765)</label>
+        <div class="server-row">
+          <input id="serverUrl" type="text" placeholder="Ej. 192.168.100.194" />
+          <button id="checkServerBtn" class="check-btn" type="button">Buscar móvil</button>
+        </div>
+        <div id="serverStatus" class="server-status">Abre la app en Android y pulsa Buscar móvil.</div>
+        <div id="lanBox" class="lan-box">
+          <span>En Android usa: <code id="lanIpText">—</code></span>
+          <button id="copyLanBtn" class="check-btn" type="button">Copiar IP</button>
+        </div>
+      </div>
     </div>
 
-    <label>Captura de audio</label>
-    <div class="modes">
-      <button id="modeDesktopBtn" class="mode-btn active" type="button">Todo el navegador</button>
-      <button id="modeTabBtn" class="mode-btn" type="button">Solo esta pestaña</button>
+    <!-- Card 2: Capture & Audio -->
+    <div class="card">
+      <div class="card-head">
+        <span class="card-title">Captura y Audio</span>
+      </div>
+      <div class="modes">
+        <button id="modeDesktopBtn" class="mode-btn active" type="button">Todo el navegador</button>
+        <button id="modeTabBtn" class="mode-btn" type="button">Solo esta pestaña</button>
+      </div>
+
+      <label for="roomCode">Código de sala (6 caracteres)</label>
+      <input id="roomCode" class="code" maxlength="6" placeholder="WVB492" />
+
+      <div class="audio-panel">
+        <div class="vol-row">
+          <span>Volumen de envío</span>
+          <span id="extVolumeLabel" class="vol-value">100%</span>
+        </div>
+        <input id="extVolumeSlider" type="range" min="0" max="150" value="100" />
+
+        <div id="pcMuteWrap" class="pc-mute-wrap">
+          <button id="pcMuteBtn" class="pc-mute-btn muted" type="button">Audio en PC: Silenciado (sin eco)</button>
+        </div>
+      </div>
     </div>
 
-    <label for="roomCode">Código de sala (6 caracteres)</label>
-    <input id="roomCode" class="code" maxlength="6" placeholder="WVB492" />
-
-    <button id="toggleBtn" class="primary">Transmitir todo el navegador</button>
-    <div id="hint" class="hint">Elige "Pantalla completa" y marca "Compartir también el audio del sistema" para escuchar todas tus pestañas y notificaciones.</div>
-    <div id="status" class="status">Listo para capturar audio</div>
+    <!-- Card 3: Action & Status -->
+    <div class="card">
+      <button id="toggleBtn" class="primary">Transmitir todo el navegador</button>
+      <div id="hint" class="hint">Elige "Pantalla completa" y marca "Compartir también el audio del sistema" para escuchar todas tus pestañas y notificaciones.</div>
+      <div id="status" class="status">Listo para capturar audio</div>
+    </div>
 
     <div class="footer">
-      <span id="versionMeta">v1.0.4 · 2026-11-23</span>
+      <span id="versionMeta">v1.0.5 · 2026-11-23</span>
       <button id="copyDiagBtn" class="diag-btn" type="button">Reportar error</button>
     </div>
     <script src="popup.js"></script>

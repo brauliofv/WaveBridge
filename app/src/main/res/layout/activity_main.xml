@@ -50,18 +50,39 @@
                 android:orientation="vertical"
                 android:padding="16dp">
 
-                <TextView
-                    android:layout_width="wrap_content"
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Salida de audio actual"
-                    android:textColor="#9CA3AF"
-                    android:textSize="12sp" />
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Salida de audio actual"
+                        android:textColor="#9CA3AF"
+                        android:textSize="12sp" />
+
+                    <TextView
+                        android:id="@+id/tvBluetoothBadge"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:background="#1F2630"
+                        android:paddingHorizontal="8dp"
+                        android:paddingVertical="3dp"
+                        android:text="● DETECTANDO"
+                        android:textColor="#9CA3AF"
+                        android:textSize="10sp"
+                        android:textStyle="bold"
+                        android:typeface="monospace" />
+                </LinearLayout>
 
                 <TextView
                     android:id="@+id/tvBluetoothOutput"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
+                    android:layout_marginTop="6dp"
                     android:text="Detectando salida de audio..."
                     android:textColor="#F4F5F7"
                     android:textSize="15sp"
@@ -296,20 +317,181 @@
                     android:textSize="16sp"
                     android:textStyle="bold" />
 
-                <TextView
-                    android:id="@+id/tvTelemetry"
+                <!-- 3-Column Numeric Telemetry Grid -->
+                <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
-                    android:text="Latencia RTT: — · Paquetes: 0"
-                    android:textColor="#9CA3AF"
-                    android:textSize="13sp"
-                    android:typeface="monospace" />
+                    android:layout_marginTop="12dp"
+                    android:orientation="horizontal">
 
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginEnd="6dp"
+                        android:layout_weight="1"
+                        android:background="#0B0D10"
+                        android:orientation="vertical"
+                        android:padding="10dp">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="RED WI-FI"
+                            android:textColor="#6B7280"
+                            android:textSize="10sp"
+                            android:textStyle="bold"
+                            android:typeface="monospace" />
+
+                        <TextView
+                            android:id="@+id/tvStatNet"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="3dp"
+                            android:text="—"
+                            android:textColor="#F4F5F7"
+                            android:textSize="14sp"
+                            android:textStyle="bold"
+                            android:typeface="monospace" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginHorizontal="3dp"
+                        android:layout_weight="1"
+                        android:background="#0B0D10"
+                        android:orientation="vertical"
+                        android:padding="10dp">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="BUFFER APP"
+                            android:textColor="#6B7280"
+                            android:textSize="10sp"
+                            android:textStyle="bold"
+                            android:typeface="monospace" />
+
+                        <TextView
+                            android:id="@+id/tvStatBuffer"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="3dp"
+                            android:text="—"
+                            android:textColor="#F4F5F7"
+                            android:textSize="14sp"
+                            android:textStyle="bold"
+                            android:typeface="monospace" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="6dp"
+                        android:layout_weight="1"
+                        android:background="#0B0D10"
+                        android:orientation="vertical"
+                        android:padding="10dp">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="PAQUETES"
+                            android:textColor="#6B7280"
+                            android:textSize="10sp"
+                            android:textStyle="bold"
+                            android:typeface="monospace" />
+
+                        <TextView
+                            android:id="@+id/tvStatPackets"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="3dp"
+                            android:text="0"
+                            android:textColor="#F4F5F7"
+                            android:textSize="14sp"
+                            android:textStyle="bold"
+                            android:typeface="monospace" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <!-- 3-Mode Latency & Anti-Interference Profile Selector -->
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="16dp"
+                    android:text="Perfil de latencia y estabilidad"
+                    android:textColor="#9CA3AF"
+                    android:textSize="12sp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:orientation="horizontal">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnProfileUltra"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="38dp"
+                        android:layout_marginEnd="4dp"
+                        android:layout_weight="1"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp"
+                        android:text="Ultra"
+                        android:textAllCaps="false"
+                        android:textColor="#9CA3AF"
+                        android:textSize="12sp"
+                        app:cornerRadius="10dp"
+                        app:strokeColor="#2A323D" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnProfileBalanced"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="38dp"
+                        android:layout_marginHorizontal="4dp"
+                        android:layout_weight="1"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp"
+                        android:text="Equilibrado"
+                        android:textAllCaps="false"
+                        android:textColor="#F4F5F7"
+                        android:textSize="12sp"
+                        app:cornerRadius="10dp"
+                        app:strokeColor="#0EA5E9" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnProfileStable"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="38dp"
+                        android:layout_marginStart="4dp"
+                        android:layout_weight="1"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp"
+                        android:text="Estable"
+                        android:textAllCaps="false"
+                        android:textColor="#9CA3AF"
+                        android:textSize="12sp"
+                        app:cornerRadius="10dp"
+                        app:strokeColor="#2A323D" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/tvProfileHint"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="5dp"
+                    android:text="Equilibrado (~38 ms): baja latencia con filtro suave anti-interferencias."
+                    android:textColor="#6B7280"
+                    android:textSize="11sp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
                     android:text="Volumen en audífonos"
                     android:textColor="#9CA3AF"
                     android:textSize="12sp" />
@@ -352,7 +534,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="v1.0.5 · 2026-11-23"
+                android:text="v1.0.6 · 2026-11-23"
                 android:textColor="#6B7280"
                 android:textSize="12sp"
                 android:typeface="monospace" />

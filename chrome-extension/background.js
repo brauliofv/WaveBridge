@@ -48,6 +48,15 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return false;
   }
 
+  if (msg.type === 'CAPTURE_RECONNECTING') {
+    chrome.runtime.sendMessage({
+      type: 'RECONNECT_STATUS',
+      attempt: msg.attempt || 1,
+      maxAttempts: msg.maxAttempts || 5,
+    }).catch(() => undefined);
+    return false;
+  }
+
   if (msg.type === 'STOP_CAPTURE' || msg.type === 'CAPTURE_ENDED') {
     if (msg.type === 'STOP_CAPTURE') {
       chrome.runtime.sendMessage({ type: 'OFFSCREEN_STOP', target: 'offscreen' });

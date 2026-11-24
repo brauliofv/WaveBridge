@@ -55,23 +55,70 @@ export function buildChromeExtensionFiles(bridgeOrigin: string): ExtensionFile[]
     <meta charset="utf-8" />
     <title>WaveBridge Emisor</title>
     <style>
+      * {
+        box-sizing: border-box;
+      }
       body {
-        width: 348px;
+        width: 356px;
         margin: 0;
-        padding: 16px;
+        padding: 14px;
         background: #0b0d10;
         color: #f4f5f7;
         font-family: system-ui, -apple-system, sans-serif;
       }
+      .header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 10px;
+      }
       h1 {
         font-size: 16px;
-        margin: 0 0 4px 0;
+        margin: 0;
+        letter-spacing: -0.01em;
       }
-      p {
-        font-size: 12px;
+      .pill {
+        font-size: 10px;
+        font-weight: 700;
+        padding: 3px 8px;
+        border-radius: 999px;
+        background: #0e2a3a;
+        color: #38bdf8;
+        border: 1px solid rgba(56, 189, 248, 0.25);
+      }
+      .card {
+        background: #13171d;
+        border: 1px solid #1f2630;
+        border-radius: 12px;
+        padding: 11px 12px;
+        margin-bottom: 10px;
+      }
+      .card-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 8px;
+      }
+      .card-title {
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
         color: #9ca3af;
-        margin: 0 0 12px 0;
-        line-height: 1.4;
+      }
+      .collapse-btn {
+        background: none;
+        border: 1px solid #232933;
+        border-radius: 6px;
+        padding: 2px 8px;
+        color: #38bdf8;
+        font-size: 10px;
+        font-weight: 600;
+        cursor: pointer;
+        display: none;
+      }
+      .collapse-btn.visible {
+        display: inline-block;
       }
       label {
         display: block;
@@ -90,26 +137,29 @@ export function buildChromeExtensionFiles(bridgeOrigin: string): ExtensionFile[]
       }
       input {
         width: 100%;
-        box-sizing: border-box;
-        padding: 9px 11px;
+        padding: 8px 10px;
         border-radius: 8px;
         border: 1px solid #232933;
-        background: #13171d;
+        background: #0b0d10;
         color: #f4f5f7;
         font-size: 12px;
-        margin-bottom: 10px;
+        margin-bottom: 8px;
       }
       input.code {
         font-family: monospace;
         font-size: 15px;
         letter-spacing: 0.14em;
         text-transform: uppercase;
+        margin-bottom: 0;
+      }
+      input:disabled {
+        opacity: 0.55;
       }
       .check-btn {
         padding: 0 10px;
         border-radius: 8px;
         border: 1px solid #232933;
-        background: #13171d;
+        background: #0b0d10;
         color: #38bdf8;
         font-size: 11px;
         font-weight: 600;
@@ -124,9 +174,8 @@ export function buildChromeExtensionFiles(bridgeOrigin: string): ExtensionFile[]
         cursor: wait;
       }
       .server-status {
-        margin-bottom: 10px;
         font-size: 11px;
-        line-height: 1.4;
+        line-height: 1.35;
         color: #9ca3af;
       }
       .server-status.ok {
@@ -140,11 +189,11 @@ export function buildChromeExtensionFiles(bridgeOrigin: string): ExtensionFile[]
         align-items: center;
         justify-content: space-between;
         gap: 8px;
-        margin-bottom: 10px;
-        padding: 8px 10px;
+        margin-top: 8px;
+        padding: 7px 9px;
         border-radius: 8px;
         border: 1px solid #1f2630;
-        background: #13171d;
+        background: #0b0d10;
         font-size: 11px;
       }
       .lan-box.visible {
@@ -159,13 +208,13 @@ export function buildChromeExtensionFiles(bridgeOrigin: string): ExtensionFile[]
         display: grid;
         grid-template-columns: 1fr 1fr;
         gap: 6px;
-        margin-bottom: 10px;
+        margin-bottom: 9px;
       }
       .mode-btn {
         padding: 8px 6px;
         border-radius: 8px;
         border: 1px solid #232933;
-        background: #13171d;
+        background: #0b0d10;
         color: #9ca3af;
         font-size: 11px;
         font-weight: 600;
@@ -176,14 +225,73 @@ export function buildChromeExtensionFiles(bridgeOrigin: string): ExtensionFile[]
         background: rgba(14, 165, 233, 0.14);
         color: #f4f5f7;
       }
+      .mode-btn:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+      }
+      .audio-panel {
+        margin-top: 10px;
+        padding: 9px 10px;
+        border-radius: 9px;
+        background: #0b0d10;
+        border: 1px solid #1f2630;
+      }
+      .vol-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 11px;
+        color: #9ca3af;
+        margin-bottom: 4px;
+      }
+      .vol-value {
+        font-family: monospace;
+        font-weight: 700;
+        color: #38bdf8;
+      }
+      input[type='range'] {
+        width: 100%;
+        margin: 2px 0 0 0;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        accent-color: #0ea5e9;
+        cursor: pointer;
+      }
+      .pc-mute-wrap {
+        display: none;
+        margin-top: 9px;
+        padding-top: 8px;
+        border-top: 1px solid #1f2630;
+      }
+      .pc-mute-wrap.visible {
+        display: block;
+      }
+      .pc-mute-btn {
+        width: 100%;
+        padding: 8px 10px;
+        border-radius: 8px;
+        border: 1px solid #2a323d;
+        background: #13171d;
+        color: #f4f5f7;
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+        text-align: center;
+      }
+      .pc-mute-btn.muted {
+        border-color: #f59e0b;
+        background: rgba(245, 158, 11, 0.14);
+        color: #fde68a;
+      }
       button.primary {
         width: 100%;
         padding: 10px 14px;
         border: 0;
-        border-radius: 8px;
+        border-radius: 9px;
         background: #0ea5e9;
         color: #06121a;
-        font-weight: 600;
+        font-weight: 700;
         font-size: 13px;
         cursor: pointer;
       }
@@ -198,17 +306,24 @@ export function buildChromeExtensionFiles(bridgeOrigin: string): ExtensionFile[]
         line-height: 1.35;
       }
       .status {
-        margin-top: 10px;
+        margin-top: 8px;
         font-size: 12px;
         color: #38bdf8;
-        line-height: 1.4;
+        line-height: 1.35;
+        font-weight: 500;
+      }
+      .status.ok {
+        color: #34d399;
+      }
+      .status.warn {
+        color: #fbbf24;
       }
       .status.err {
         color: #f87171;
       }
       .footer {
-        margin-top: 14px;
-        padding-top: 10px;
+        margin-top: 10px;
+        padding-top: 8px;
         border-top: 1px solid #1f2630;
         display: flex;
         align-items: center;
@@ -231,38 +346,65 @@ export function buildChromeExtensionFiles(bridgeOrigin: string): ExtensionFile[]
     </style>
   </head>
   <body>
-    <h1>WaveBridge (Wi-Fi Local)</h1>
-    <p>Envía el audio del navegador directo a tu smartphone por Wi-Fi, sin terminal ni nube.</p>
-
-    <label>Conexión Wi-Fi</label>
-    <div class="modes">
-      <button id="targetDirectBtn" class="mode-btn active" type="button">Directo al móvil</button>
-      <button id="targetBridgeBtn" class="mode-btn" type="button">Puente PC (Plan B)</button>
+    <div class="header">
+      <h1>WaveBridge</h1>
+      <span class="pill">Wi-Fi Local</span>
     </div>
 
-    <label id="targetInputLabel" for="serverUrl">IP de tu móvil Android en Wi-Fi (puerto 8765)</label>
-    <div class="server-row">
-      <input id="serverUrl" type="text" placeholder="Ej. 192.168.100.194" />
-      <button id="checkServerBtn" class="check-btn" type="button">Buscar móvil</button>
-    </div>
-    <div id="serverStatus" class="server-status">Abre la app en Android y pulsa Buscar móvil.</div>
-    <div id="lanBox" class="lan-box">
-      <span>En Android usa: <code id="lanIpText">—</code></span>
-      <button id="copyLanBtn" class="check-btn" type="button">Copiar IP</button>
+    <div class="card">
+      <div class="card-head">
+        <span class="card-title">Destino Wi-Fi</span>
+        <button id="toggleNetBtn" class="collapse-btn" type="button">Ajustar red ▾</button>
+      </div>
+      <div id="networkBody">
+        <div class="modes">
+          <button id="targetDirectBtn" class="mode-btn active" type="button">Directo al móvil</button>
+          <button id="targetBridgeBtn" class="mode-btn" type="button">Puente PC (Plan B)</button>
+        </div>
+
+        <label id="targetInputLabel" for="serverUrl">IP de tu móvil Android en Wi-Fi (puerto 8765)</label>
+        <div class="server-row">
+          <input id="serverUrl" type="text" placeholder="Ej. 192.168.100.194" />
+          <button id="checkServerBtn" class="check-btn" type="button">Buscar móvil</button>
+        </div>
+        <div id="serverStatus" class="server-status">Abre la app en Android y pulsa Buscar móvil.</div>
+        <div id="lanBox" class="lan-box">
+          <span>En Android usa: <code id="lanIpText">—</code></span>
+          <button id="copyLanBtn" class="check-btn" type="button">Copiar IP</button>
+        </div>
+      </div>
     </div>
 
-    <label>Captura de audio</label>
-    <div class="modes">
-      <button id="modeDesktopBtn" class="mode-btn active" type="button">Todo el navegador</button>
-      <button id="modeTabBtn" class="mode-btn" type="button">Solo esta pestaña</button>
+    <div class="card">
+      <div class="card-head">
+        <span class="card-title">Captura y Audio</span>
+      </div>
+      <div class="modes">
+        <button id="modeDesktopBtn" class="mode-btn active" type="button">Todo el navegador</button>
+        <button id="modeTabBtn" class="mode-btn" type="button">Solo esta pestaña</button>
+      </div>
+
+      <label for="roomCode">Código de sala (6 caracteres)</label>
+      <input id="roomCode" class="code" maxlength="6" placeholder="WVB492" />
+
+      <div class="audio-panel">
+        <div class="vol-row">
+          <span>Volumen de envío</span>
+          <span id="extVolumeLabel" class="vol-value">100%</span>
+        </div>
+        <input id="extVolumeSlider" type="range" min="0" max="150" value="100" />
+
+        <div id="pcMuteWrap" class="pc-mute-wrap">
+          <button id="pcMuteBtn" class="pc-mute-btn muted" type="button">Audio en PC: Silenciado (sin eco)</button>
+        </div>
+      </div>
     </div>
 
-    <label for="roomCode">Código de sala (6 caracteres)</label>
-    <input id="roomCode" class="code" maxlength="6" placeholder="WVB492" />
-
-    <button id="toggleBtn" class="primary">Transmitir todo el navegador</button>
-    <div id="hint" class="hint">Elige "Pantalla completa" y marca "Compartir también el audio del sistema" para escuchar todas tus pestañas y notificaciones.</div>
-    <div id="status" class="status">Listo para capturar audio</div>
+    <div class="card">
+      <button id="toggleBtn" class="primary">Transmitir todo el navegador</button>
+      <div id="hint" class="hint">Elige "Pantalla completa" y marca "Compartir también el audio del sistema" para escuchar todas tus pestañas y notificaciones.</div>
+      <div id="status" class="status">Listo para capturar audio</div>
+    </div>
 
     <div class="footer">
       <span id="versionMeta">v${EXTENSION_VERSION} · ${EXTENSION_RELEASE_DATE}</span>
@@ -276,6 +418,8 @@ export function buildChromeExtensionFiles(bridgeOrigin: string): ExtensionFile[]
 const ANDROID_DIRECT_PORT = 8765;
 const EXT_BUILD_DATE = '${EXTENSION_RELEASE_DATE}';
 
+const toggleNetBtn = document.getElementById('toggleNetBtn');
+const networkBody = document.getElementById('networkBody');
 const targetDirectBtn = document.getElementById('targetDirectBtn');
 const targetBridgeBtn = document.getElementById('targetBridgeBtn');
 const targetInputLabel = document.getElementById('targetInputLabel');
@@ -291,6 +435,10 @@ const statusEl = document.getElementById('status');
 const hintEl = document.getElementById('hint');
 const modeDesktopBtn = document.getElementById('modeDesktopBtn');
 const modeTabBtn = document.getElementById('modeTabBtn');
+const extVolumeSlider = document.getElementById('extVolumeSlider');
+const extVolumeLabel = document.getElementById('extVolumeLabel');
+const pcMuteWrap = document.getElementById('pcMuteWrap');
+const pcMuteBtn = document.getElementById('pcMuteBtn');
 const versionMetaEl = document.getElementById('versionMeta');
 const copyDiagBtn = document.getElementById('copyDiagBtn');
 
@@ -299,6 +447,10 @@ versionMetaEl.textContent = 'v' + manifestVersion + ' · ' + EXT_BUILD_DATE;
 
 let captureMode = 'desktop';
 let targetMode = 'direct';
+let extVolumePct = 100;
+let pcMuted = true;
+let isStreamingNow = false;
+let networkExpandedOverride = null;
 
 function randomCode() {
   const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -577,6 +729,65 @@ async function checkServerReachability(rawUrl, mode = targetMode) {
   }
 }
 
+function updateAudioControlsUi() {
+  extVolumeSlider.value = String(extVolumePct);
+  extVolumeLabel.textContent = extVolumePct + '%';
+  if (captureMode === 'tab') {
+    pcMuteWrap.className = 'pc-mute-wrap visible';
+    pcMuteBtn.className = pcMuted ? 'pc-mute-btn muted' : 'pc-mute-btn';
+    pcMuteBtn.textContent = pcMuted
+      ? 'Audio en PC: Silenciado (sin eco)'
+      : 'Audio en PC: Sonando en laptop';
+  } else {
+    pcMuteWrap.className = 'pc-mute-wrap';
+  }
+}
+
+function pushLiveAudioControls() {
+  chrome.runtime
+    .sendMessage({
+      target: 'offscreen',
+      type: 'SET_AUDIO_CONTROL',
+      extVolume: extVolumePct / 100,
+      pcMuted,
+    })
+    .catch(() => undefined);
+}
+
+extVolumeSlider.addEventListener('input', () => {
+  extVolumePct = Math.max(0, Math.min(150, Number(extVolumeSlider.value) || 0));
+  extVolumeLabel.textContent = extVolumePct + '%';
+  chrome.storage.local.set({ extVolume: extVolumePct });
+  pushLiveAudioControls();
+});
+
+pcMuteBtn.addEventListener('click', () => {
+  if (captureMode !== 'tab') return;
+  pcMuted = !pcMuted;
+  chrome.storage.local.set({ pcMuted });
+  updateAudioControlsUi();
+  pushLiveAudioControls();
+});
+
+toggleNetBtn.addEventListener('click', () => {
+  const currentlyOpen = networkBody.style.display !== 'none';
+  networkExpandedOverride = !currentlyOpen;
+  applyNetworkCollapseUi();
+});
+
+function applyNetworkCollapseUi() {
+  if (!isStreamingNow) {
+    networkExpandedOverride = null;
+    toggleNetBtn.className = 'collapse-btn';
+    networkBody.style.display = 'block';
+    return;
+  }
+  toggleNetBtn.className = 'collapse-btn visible';
+  const show = networkExpandedOverride === true;
+  networkBody.style.display = show ? 'block' : 'none';
+  toggleNetBtn.textContent = show ? 'Ocultar red ▴' : 'Ajustar red ▾';
+}
+
 copyLanBtn.addEventListener('click', async () => {
   const val = lanIpTextEl.textContent || '';
   if (!val || val === '—') return;
@@ -623,14 +834,18 @@ function setTargetMode(mode, storedData) {
   }
 }
 
-function setCaptureMode(mode) {
+function setCaptureMode(mode, persist = true) {
   captureMode = mode === 'tab' ? 'tab' : 'desktop';
+  if (persist) {
+    chrome.storage.local.set({ captureMode });
+  }
   modeDesktopBtn.className = captureMode === 'desktop' ? 'mode-btn active' : 'mode-btn';
   modeTabBtn.className = captureMode === 'tab' ? 'mode-btn active' : 'mode-btn';
   hintEl.textContent =
     captureMode === 'desktop'
       ? 'Elige "Pantalla completa" y marca "Compartir también el audio del sistema" para escuchar todas tus pestañas y notificaciones.'
-      : 'Captura únicamente el audio de la pestaña actual aunque cambies de ventana.';
+      : 'Captura solo la pestaña actual aunque cambies de ventana. Puedes silenciarla en la laptop sin quitar el sonido al sistema.';
+  updateAudioControlsUi();
   chrome.storage.local.get(['streaming', 'lastError'], (data) =>
     updateUi(Boolean(data.streaming), data.lastError || '')
   );
@@ -648,8 +863,14 @@ targetBridgeBtn.addEventListener('click', async () => {
   setTargetMode('bridge', { bridgeUrl: data.bridgeUrl || DEFAULT_SERVER_URL });
 });
 
-modeDesktopBtn.addEventListener('click', () => setCaptureMode('desktop'));
-modeTabBtn.addEventListener('click', () => setCaptureMode('tab'));
+modeDesktopBtn.addEventListener('click', () => {
+  if (isStreamingNow) return;
+  setCaptureMode('desktop', true);
+});
+modeTabBtn.addEventListener('click', () => {
+  if (isStreamingNow) return;
+  setCaptureMode('tab', true);
+});
 
 checkServerBtn.addEventListener('click', async () => {
   if (targetMode === 'direct') {
@@ -676,12 +897,26 @@ serverInput.addEventListener('change', async () => {
 });
 
 chrome.storage.local.get(
-  ['roomCode', 'targetMode', 'directUrl', 'bridgeUrl', 'streaming', 'captureMode', 'errorLogs', 'lastError'],
+  [
+    'roomCode',
+    'targetMode',
+    'directUrl',
+    'bridgeUrl',
+    'streaming',
+    'captureMode',
+    'extVolume',
+    'pcMuted',
+    'errorLogs',
+    'lastError',
+  ],
   (data) => {
     roomInput.value = data.roomCode || randomCode();
+    extVolumePct = typeof data.extVolume === 'number' ? Math.max(0, Math.min(150, data.extVolume)) : 100;
+    pcMuted = data.pcMuted !== false;
     captureMode = data.captureMode === 'tab' ? 'tab' : 'desktop';
     setTargetMode(data.targetMode === 'bridge' ? 'bridge' : 'direct', data);
-    setCaptureMode(captureMode);
+    setCaptureMode(captureMode, false);
+    updateAudioControlsUi();
     updateUi(Boolean(data.streaming), data.lastError || '');
     if (Array.isArray(data.errorLogs) && data.errorLogs.length > 0) {
       copyDiagBtn.textContent = 'Diagnóstico (' + data.errorLogs.length + ')';
@@ -692,10 +927,19 @@ chrome.storage.local.get(
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg.type === 'STATUS_CHANGED') {
     updateUi(Boolean(msg.streaming), msg.errorMessage || '');
+  } else if (msg.type === 'RECONNECT_STATUS') {
+    statusEl.className = 'status warn';
+    statusEl.textContent = 'Reconectando Wi-Fi (' + msg.attempt + '/' + msg.maxAttempts + ')...';
   }
 });
 
 function updateUi(streaming, errorMessage) {
+  isStreamingNow = streaming;
+  modeDesktopBtn.disabled = streaming;
+  modeTabBtn.disabled = streaming;
+  roomInput.disabled = streaming;
+  applyNetworkCollapseUi();
+
   toggleBtn.textContent = streaming
     ? 'Detener transmisión'
     : captureMode === 'desktop'
@@ -703,7 +947,7 @@ function updateUi(streaming, errorMessage) {
       : 'Transmitir pestaña activa';
   toggleBtn.className = streaming ? 'primary stop' : 'primary';
   if (streaming) {
-    statusEl.className = 'status';
+    statusEl.className = 'status ok';
     statusEl.textContent = 'Transmitiendo en Wi-Fi local · Sala ' + roomInput.value;
   } else if (errorMessage) {
     statusEl.className = 'status err';
@@ -746,6 +990,8 @@ toggleBtn.addEventListener('click', async () => {
     roomCode: code,
     targetMode,
     captureMode,
+    extVolume: extVolumePct,
+    pcMuted,
     lastError: '',
   };
   if (targetMode === 'direct') {
@@ -785,6 +1031,8 @@ toggleBtn.addEventListener('click', async () => {
           streamId,
           roomCode: activeCode,
           wsUrl: toWebSocketUrl(serverUrl, targetMode),
+          extVolume: extVolumePct / 100,
+          pcMuted: false,
         },
         (res) => {
           if (res && res.ok) {
@@ -813,6 +1061,8 @@ toggleBtn.addEventListener('click', async () => {
           streamId,
           roomCode: activeCode,
           wsUrl: toWebSocketUrl(serverUrl, targetMode),
+          extVolume: extVolumePct / 100,
+          pcMuted,
         },
         (res) => {
           if (res && res.ok) {
@@ -834,24 +1084,29 @@ copyDiagBtn.addEventListener('click', async () => {
     'bridgeUrl',
     'streaming',
     'captureMode',
+    'extVolume',
+    'pcMuted',
     'errorLogs',
   ]);
   const logs = Array.isArray(data.errorLogs) ? data.errorLogs : [];
   const activeTarget = data.targetMode === 'bridge' ? 'bridge' : 'direct';
   const activeUrl =
     activeTarget === 'direct' ? (data.directUrl || 'sin detectar') : (data.bridgeUrl || DEFAULT_SERVER_URL);
+  const activeMode = data.captureMode || 'desktop';
   const report = [
     '=== WaveBridge Extensión Diagnóstico ===',
     'Versión: v' + manifestVersion + ' (' + EXT_BUILD_DATE + ')',
     'Conexión: ' + activeTarget,
     'Destino: ' + activeUrl,
-    'Modo captura: ' + (data.captureMode || 'desktop'),
+    'Modo captura: ' + activeMode,
+    'Volumen envío: ' + (typeof data.extVolume === 'number' ? data.extVolume : 100) + '%',
+    activeMode === 'tab' ? 'Audio en PC (pestaña): ' + (data.pcMuted !== false ? 'silenciado' : 'activo') : null,
     'Sala: ' + (data.roomCode || 'N/A'),
     'Transmitiendo: ' + (data.streaming ? 'sí' : 'no'),
     'Navegador: ' + navigator.userAgent,
     '',
     logs.length > 0 ? 'Errores recientes:\\n' + logs.join('\\n') : 'Sin errores recientes.',
-  ].join('\\n');
+  ].filter((line) => line !== null).join('\\n');
   await navigator.clipboard.writeText(report);
   copyDiagBtn.textContent = 'Copiado';
   setTimeout(() => {
@@ -905,6 +1160,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.type === 'CAPTURE_CONNECTED') {
     chrome.storage.local.set({ streaming: true, lastError: '' });
     notifyPopup(true, '');
+    return false;
+  }
+  if (msg.type === 'CAPTURE_RECONNECTING') {
+    chrome.runtime.sendMessage({
+      type: 'RECONNECT_STATUS',
+      attempt: msg.attempt || 1,
+      maxAttempts: msg.maxAttempts || 5,
+    }).catch(() => undefined);
     return false;
   }
   if (msg.type === 'STOP_CAPTURE' || msg.type === 'CAPTURE_ENDED') {
@@ -998,9 +1261,16 @@ registerProcessor('wavebridge-pcm-processor', WaveBridgePcmProcessor);`;
   const offscreenJs = `let activeStream = null;
 let audioCtx = null;
 let audioNode = null;
+let streamGainNode = null;
+let monitorGainNode = null;
+let currentSourceKind = 'desktop';
+let currentCaptureConfig = null;
 let socket = null;
 let seq = 0;
 let isShuttingDown = false;
+let reconnectTimer = null;
+let reconnectAttempt = 0;
+const MAX_RECONNECT_ATTEMPTS = 5;
 const peers = new Map();
 let activeReceivers = [];
 
@@ -1045,17 +1315,176 @@ async function diagnoseWebSocketFailure(wsUrl) {
   }
 }
 
+function clearReconnectTimer() {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+}
+
+function connectWebSocket(config) {
+  if (isShuttingDown || !activeStream || !audioCtx) return;
+
+  if (socket) {
+    socket.onclose = null;
+    socket.onerror = null;
+    socket.close();
+    socket = null;
+  }
+
+  let wsConnectedOnce = false;
+  let dropHandled = false;
+  const ws = new WebSocket(config.wsUrl);
+  socket = ws;
+
+  const handleSocketDrop = async (closeCode) => {
+    if (dropHandled || isShuttingDown) return;
+    dropHandled = true;
+    ws.onclose = null;
+    ws.onerror = null;
+    if (socket === ws) {
+      socket = null;
+    }
+    activeReceivers = [];
+    peers.forEach((pc) => pc.close());
+    peers.clear();
+
+    const audioTrack = activeStream?.getAudioTracks?.()[0];
+    const canRetry =
+      Boolean(audioTrack && audioTrack.readyState === 'live') &&
+      reconnectAttempt < MAX_RECONNECT_ATTEMPTS;
+
+    if (canRetry) {
+      reconnectAttempt += 1;
+      chrome.runtime.sendMessage({
+        type: 'CAPTURE_RECONNECTING',
+        attempt: reconnectAttempt,
+        maxAttempts: MAX_RECONNECT_ATTEMPTS,
+      }).catch(() => undefined);
+      clearReconnectTimer();
+      reconnectTimer = setTimeout(() => {
+        if (!isShuttingDown && activeStream && currentCaptureConfig) {
+          connectWebSocket(currentCaptureConfig);
+        }
+      }, 1200);
+      return;
+    }
+
+    const detail = wsConnectedOnce
+      ? 'Conexión WebSocket cerrada (código ' + (closeCode ?? 1006) + ').'
+      : await diagnoseWebSocketFailure(config.wsUrl);
+    reportError(detail);
+    cleanup();
+    chrome.runtime.sendMessage({ type: 'CAPTURE_ENDED', errorMessage: detail });
+  };
+
+  ws.onerror = () => {
+    handleSocketDrop(1006);
+  };
+  ws.onclose = (ev) => {
+    handleSocketDrop(ev.code);
+  };
+  ws.onopen = () => {
+    wsConnectedOnce = true;
+    reconnectAttempt = 0;
+    clearReconnectTimer();
+    chrome.runtime.sendMessage({ type: 'CAPTURE_CONNECTED' });
+    ws.send(JSON.stringify({
+      type: 'join',
+      room: config.roomCode,
+      role: 'sender',
+      deviceName: config.sourceKind === 'desktop' ? 'Chrome Todo el Navegador' : 'Extensión Chrome',
+    }));
+    ws.send(JSON.stringify({
+      type: 'stream-state',
+      state: {
+        active: true,
+        source: 'tab',
+        sourceLabel: config.sourceKind === 'desktop' ? 'Todo el navegador / Sistema' : 'Pestaña de Chrome',
+        codec: 'opus-256',
+        latencyPreset: 'balanced',
+        sampleRate: audioCtx.sampleRate,
+        channels: 2,
+        muted: false,
+      },
+    }));
+  };
+
+  ws.onmessage = async (event) => {
+    if (typeof event.data !== 'string') return;
+    const data = JSON.parse(event.data);
+    if (data.type === 'room-presence' && Array.isArray(data.receivers)) {
+      activeReceivers = data.receivers;
+    } else if (data.type === 'receiver-joined') {
+      const pc = new RTCPeerConnection({
+        iceServers: [],
+      });
+      peers.set(data.peerId, pc);
+      activeStream.getAudioTracks().forEach((track) => pc.addTrack(track, activeStream));
+      pc.onicecandidate = (e) => {
+        if (e.candidate && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({
+            type: 'signal',
+            targetId: data.peerId,
+            payload: { candidate: e.candidate },
+          }));
+        }
+      };
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'signal',
+          targetId: data.peerId,
+          payload: { sdp: pc.localDescription },
+        }));
+      }
+    } else if (data.type === 'receiver-left') {
+      const pc = peers.get(data.peerId);
+      if (pc) {
+        pc.close();
+        peers.delete(data.peerId);
+      }
+    } else if (data.type === 'signal' && data.fromId) {
+      const pc = peers.get(data.fromId);
+      if (!pc) return;
+      if (data.payload.sdp) {
+        await pc.setRemoteDescription(new RTCSessionDescription(data.payload.sdp));
+      } else if (data.payload.candidate) {
+        await pc.addIceCandidate(new RTCIceCandidate(data.payload.candidate));
+      }
+    }
+  };
+}
+
 chrome.runtime.onMessage.addListener(async (msg) => {
   if (msg.target !== 'offscreen') return;
   if (msg.type === 'OFFSCREEN_STOP') {
     cleanup();
     return;
   }
+  if (msg.type === 'SET_AUDIO_CONTROL') {
+    if (streamGainNode && audioCtx && typeof msg.extVolume === 'number') {
+      const vol = Math.max(0, Math.min(1.5, msg.extVolume));
+      streamGainNode.gain.setTargetAtTime(vol, audioCtx.currentTime, 0.015);
+    }
+    if (monitorGainNode && audioCtx && currentSourceKind === 'tab' && typeof msg.pcMuted === 'boolean') {
+      monitorGainNode.gain.setTargetAtTime(msg.pcMuted ? 0 : 1, audioCtx.currentTime, 0.015);
+    }
+    return;
+  }
   if (msg.type === 'START_CAPTURE') {
     cleanup();
     isShuttingDown = false;
+    reconnectAttempt = 0;
+    currentSourceKind = msg.sourceKind === 'tab' ? 'tab' : 'desktop';
+    currentCaptureConfig = {
+      wsUrl: msg.wsUrl,
+      roomCode: msg.roomCode,
+      sourceKind: currentSourceKind,
+    };
     try {
-      if (msg.sourceKind === 'desktop') {
+      if (currentSourceKind === 'desktop') {
         activeStream = await navigator.mediaDevices.getUserMedia({
           audio: {
             mandatory: {
@@ -1101,8 +1530,18 @@ chrome.runtime.onMessage.addListener(async (msg) => {
 
       audioCtx = new AudioContext({ latencyHint: 'interactive', sampleRate: 48000 });
       const src = audioCtx.createMediaStreamSource(activeStream);
-      if (msg.sourceKind !== 'desktop') {
-        src.connect(audioCtx.destination);
+
+      streamGainNode = audioCtx.createGain();
+      const initVol = typeof msg.extVolume === 'number' ? Math.max(0, Math.min(1.5, msg.extVolume)) : 1.0;
+      streamGainNode.gain.value = initVol;
+      src.connect(streamGainNode);
+
+      if (currentSourceKind === 'tab') {
+        const initPcMuted = msg.pcMuted !== false;
+        monitorGainNode = audioCtx.createGain();
+        monitorGainNode.gain.value = initPcMuted ? 0 : 1;
+        src.connect(monitorGainNode);
+        monitorGainNode.connect(audioCtx.destination);
       }
 
       const silentSink = audioCtx.createGain();
@@ -1125,7 +1564,7 @@ chrome.runtime.onMessage.addListener(async (msg) => {
         });
         workletNode.port.onmessage = (ev) => sendBinaryIfReady(ev.data);
         audioNode = workletNode;
-        src.connect(workletNode);
+        streamGainNode.connect(workletNode);
         workletNode.connect(silentSink);
       } else {
         const processor = audioCtx.createScriptProcessor(256, 2, 2);
@@ -1145,96 +1584,12 @@ chrome.runtime.onMessage.addListener(async (msg) => {
           );
         };
         audioNode = processor;
-        src.connect(processor);
+        streamGainNode.connect(processor);
         processor.connect(silentSink);
       }
       silentSink.connect(audioCtx.destination);
 
-      let wsConnectedOnce = false;
-      socket = new WebSocket(msg.wsUrl);
-      socket.onerror = async () => {
-        if (isShuttingDown) return;
-        const detail = await diagnoseWebSocketFailure(msg.wsUrl);
-        reportError(detail);
-        cleanup();
-        chrome.runtime.sendMessage({ type: 'CAPTURE_ENDED', errorMessage: detail });
-      };
-      socket.onclose = async (ev) => {
-        if (isShuttingDown) return;
-        const detail = wsConnectedOnce
-          ? 'Conexión WebSocket cerrada (código ' + ev.code + ').'
-          : await diagnoseWebSocketFailure(msg.wsUrl);
-        reportError(detail);
-        cleanup();
-        chrome.runtime.sendMessage({ type: 'CAPTURE_ENDED', errorMessage: detail });
-      };
-      socket.onopen = () => {
-        wsConnectedOnce = true;
-        chrome.runtime.sendMessage({ type: 'CAPTURE_CONNECTED' });
-        socket.send(JSON.stringify({
-          type: 'join',
-          room: msg.roomCode,
-          role: 'sender',
-          deviceName: msg.sourceKind === 'desktop' ? 'Chrome Todo el Navegador' : 'Extensión Chrome',
-        }));
-        socket.send(JSON.stringify({
-          type: 'stream-state',
-          state: {
-            active: true,
-            source: 'tab',
-            sourceLabel: msg.sourceKind === 'desktop' ? 'Todo el navegador / Sistema' : 'Pestaña de Chrome',
-            codec: 'opus-256',
-            latencyPreset: 'balanced',
-            sampleRate: audioCtx.sampleRate,
-            channels: 2,
-            muted: false,
-          },
-        }));
-      };
-
-      socket.onmessage = async (event) => {
-        if (typeof event.data !== 'string') return;
-        const data = JSON.parse(event.data);
-        if (data.type === 'room-presence' && Array.isArray(data.receivers)) {
-          activeReceivers = data.receivers;
-        } else if (data.type === 'receiver-joined') {
-          const pc = new RTCPeerConnection({
-            iceServers: [],
-          });
-          peers.set(data.peerId, pc);
-          activeStream.getAudioTracks().forEach((track) => pc.addTrack(track, activeStream));
-          pc.onicecandidate = (e) => {
-            if (e.candidate) {
-              socket.send(JSON.stringify({
-                type: 'signal',
-                targetId: data.peerId,
-                payload: { candidate: e.candidate },
-              }));
-            }
-          };
-          const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-          socket.send(JSON.stringify({
-            type: 'signal',
-            targetId: data.peerId,
-            payload: { sdp: pc.localDescription },
-          }));
-        } else if (data.type === 'receiver-left') {
-          const pc = peers.get(data.peerId);
-          if (pc) {
-            pc.close();
-            peers.delete(data.peerId);
-          }
-        } else if (data.type === 'signal' && data.fromId) {
-          const pc = peers.get(data.fromId);
-          if (!pc) return;
-          if (data.payload.sdp) {
-            await pc.setRemoteDescription(new RTCSessionDescription(data.payload.sdp));
-          } else if (data.payload.candidate) {
-            await pc.addIceCandidate(new RTCIceCandidate(data.payload.candidate));
-          }
-        }
-      };
+      connectWebSocket(currentCaptureConfig);
     } catch (err) {
       const errMsg = 'offscreen capture: ' + (err?.message || String(err));
       reportError(errMsg);
@@ -1246,6 +1601,9 @@ chrome.runtime.onMessage.addListener(async (msg) => {
 
 function cleanup() {
   isShuttingDown = true;
+  clearReconnectTimer();
+  reconnectAttempt = 0;
+  currentCaptureConfig = null;
   activeReceivers = [];
   peers.forEach((pc) => pc.close());
   peers.clear();
@@ -1257,6 +1615,22 @@ function cleanup() {
       // ignore
     }
     audioNode = null;
+  }
+  if (streamGainNode) {
+    try {
+      streamGainNode.disconnect();
+    } catch {
+      // ignore
+    }
+    streamGainNode = null;
+  }
+  if (monitorGainNode) {
+    try {
+      monitorGainNode.disconnect();
+    } catch {
+      // ignore
+    }
+    monitorGainNode = null;
   }
   if (socket) {
     socket.onclose = null;

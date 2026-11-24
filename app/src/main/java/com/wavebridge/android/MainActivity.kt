@@ -58,9 +58,16 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnDiagnostics: MaterialButton
     private lateinit var cardTelemetry: MaterialCardView
     private lateinit var tvStateBadge: TextView
+    private lateinit var tvBluetoothBadge: TextView
     private lateinit var tvBluetoothOutput: TextView
     private lateinit var tvConnectionStatus: TextView
-    private lateinit var tvTelemetry: TextView
+    private lateinit var tvStatNet: TextView
+    private lateinit var tvStatBuffer: TextView
+    private lateinit var tvStatPackets: TextView
+    private lateinit var btnProfileUltra: MaterialButton
+    private lateinit var btnProfileBalanced: MaterialButton
+    private lateinit var btnProfileStable: MaterialButton
+    private lateinit var tvProfileHint: TextView
     private lateinit var tvAppVersion: TextView
     private lateinit var seekVolume: SeekBar
 
@@ -73,6 +80,7 @@ class MainActivity : AppCompatActivity() {
     private var isConnected = false
     private var isSenderConnected = false
     private var modeDirect = true
+    private var latencyProfile = AudioBridgeService.PROFILE_BALANCED
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -90,6 +98,12 @@ class MainActivity : AppCompatActivity() {
             val packets = intent.getLongExtra(AudioBridgeService.EXTRA_PACKETS, 0L)
             val bufferMs = intent.getIntExtra(AudioBridgeService.EXTRA_BUFFER_MS, 0)
             val dropped = intent.getLongExtra(AudioBridgeService.EXTRA_DROPPED, 0L)
+            intent.getStringExtra(AudioBridgeService.EXTRA_PROFILE)?.let { incomingProfile ->
+                if (incomingProfile != latencyProfile) {
+                    latencyProfile = normalizeProfile(incomingProfile)
+                    applyProfileUi()
+                }
+            }
 
             tvConnectionStatus.text = statusText
             renderTelemetry(rttMs, packets, bufferMs, dropped)
@@ -143,15 +157,25 @@ class MainActivity : AppCompatActivity() {
         btnDiagnostics = findViewById(R.id.btnDiagnostics)
         cardTelemetry = findViewById(R.id.cardTelemetry)
         tvStateBadge = findViewById(R.id.tvStateBadge)
+        tvBluetoothBadge = findViewById(R.id.tvBluetoothBadge)
         tvBluetoothOutput = findViewById(R.id.tvBluetoothOutput)
         tvConnectionStatus = findViewById(R.id.tvConnectionStatus)
-        tvTelemetry = findViewById(R.id.tvTelemetry)
+        tvStatNet = findViewById(R.id.tvStatNet)
+        tvStatBuffer = findViewById(R.id.tvStatBuffer)
+        tvStatPackets = findViewById(R.id.tvStatPackets)
+        btnProfileUltra = findViewById(R.id.btnProfileUltra)
+        btnProfileBalanced = findViewById(R.id.btnProfileBalanced)
+        btnProfileStable = findViewById(R.id.btnProfileStable)
+        tvProfileHint = findViewById(R.id.tvProfileHint)
         tvAppVersion = findViewById(R.id.tvAppVersion)
         seekVolume = findViewById(R.id.seekVolume)
 
         tvAppVersion.text = "v${BuildConfig.VERSION_NAME} · ${BuildConfig.BUILD_DATE}"
 
         modeDirect = prefs.getBoolean("mode_direct", true)
+        latencyProfile = normalizeProfile(
+            prefs.getString("latency_profile", AudioBridgeService.PROFILE_BALANCED)
+        )
         val savedServer = prefs.getString("server_url", null)
         if (!savedServer.isNullOrBlank() &&
             savedServer != "http://192.168.1.50:3000" &&
@@ -171,6 +195,7 @@ class MainActivity : AppCompatActivity() {
         isSenderConnected = AudioBridgeService.currentSenderConnected
         if (isConnected) {
             modeDirect = AudioBridgeService.currentDirectMode
+            latencyProfile = normalizeProfile(AudioBridgeService.currentProfile)
             if (AudioBridgeService.currentRoomCode.isNotEmpty()) {
                 etRoomCode.setText(AudioBridgeService.currentRoomCode)
             }
@@ -184,6 +209,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         applyModeUi()
+        applyProfileUi()
         refreshPhoneIp()
         updateConnectButtonUi()
 
@@ -283,10 +309,72 @@ class MainActivity : AppCompatActivity() {
             sendVolumeUpdate(seekVolume.progress / 100f, isMuted)
         }
 
+        btnProfileUltra.setOnClickListener {
+            selectLatencyProfile(AudioBridgeService.PROFILE_ULTRA)
+        }
+        btnProfileBalanced.setOnClickListener {
+            selectLatencyProfile(AudioBridgeService.PROFILE_BALANCED)
+        }
+        btnProfileStable.setOnClickListener {
+            selectLatencyProfile(AudioBridgeService.PROFILE_STABLE)
+        }
+
         btnDiagnostics.setOnClickListener {
             shareDiagnosticReport()
         }
         updateMuteButtonUi()
+    }
+
+    private fun normalizeProfile(raw: String?): String {
+        return when (raw) {
+            AudioBridgeService.PROFILE_ULTRA -> AudioBridgeService.PROFILE_ULTRA
+            AudioBridgeService.PROFILE_STABLE -> AudioBridgeService.PROFILE_STABLE
+            else -> AudioBridgeService.PROFILE_BALANCED
+        }
+    }
+
+    private fun selectLatencyProfile(profileId: String) {
+        val clean = normalizeProfile(profileId)
+        latencyProfile = clean
+        prefs.edit().putString("latency_profile", clean).apply()
+        applyProfileUi()
+        if (isConnected) {
+            val profileIntent = Intent(this, AudioBridgeService::class.java).apply {
+                action = AudioBridgeService.ACTION_SET_PROFILE
+                putExtra(AudioBridgeService.EXTRA_PROFILE, clean)
+            }
+            startService(profileIntent)
+        }
+    }
+
+    private fun applyProfileUi() {
+        val activeBg = Color.parseColor("#0E2A3A")
+        val inactiveBg = Color.parseColor("#0B0D10")
+        val activeStroke = Color.parseColor("#0EA5E9")
+        val inactiveStroke = Color.parseColor("#2A323D")
+        val activeText = Color.parseColor("#F4F5F7")
+        val mutedText = Color.parseColor("#9CA3AF")
+
+        val buttons = listOf(
+            btnProfileUltra to AudioBridgeService.PROFILE_ULTRA,
+            btnProfileBalanced to AudioBridgeService.PROFILE_BALANCED,
+            btnProfileStable to AudioBridgeService.PROFILE_STABLE
+        )
+        for ((btn, id) in buttons) {
+            val active = latencyProfile == id
+            btn.backgroundTintList = ColorStateList.valueOf(if (active) activeBg else inactiveBg)
+            btn.strokeColor = ColorStateList.valueOf(if (active) activeStroke else inactiveStroke)
+            btn.setTextColor(if (active) activeText else mutedText)
+        }
+
+        tvProfileHint.text = when (latencyProfile) {
+            AudioBridgeService.PROFILE_ULTRA ->
+                "Ultra (~25 ms): máxima respuesta en Wi-Fi 5 GHz sin obstáculos."
+            AudioBridgeService.PROFILE_STABLE ->
+                "Estable (~60 ms): absorbe microcortes en Wi-Fi 2.4 GHz o congestionado."
+            else ->
+                "Equilibrado (~38 ms): baja latencia con filtro suave anti-interferencias."
+        }
     }
 
     private fun startBridgeClient(room: String, serverUrl: String) {
@@ -295,6 +383,7 @@ class MainActivity : AppCompatActivity() {
             action = AudioBridgeService.ACTION_CONNECT
             putExtra(AudioBridgeService.EXTRA_ROOM_CODE, room)
             putExtra(AudioBridgeService.EXTRA_SERVER_URL, serverUrl)
+            putExtra(AudioBridgeService.EXTRA_PROFILE, latencyProfile)
         }
         ContextCompat.startForegroundService(this, startIntent)
     }
@@ -335,6 +424,7 @@ class MainActivity : AppCompatActivity() {
             action = AudioBridgeService.ACTION_START_DIRECT
             putExtra(AudioBridgeService.EXTRA_ROOM_CODE, room)
             putExtra(AudioBridgeService.EXTRA_LISTEN_HOST, ip)
+            putExtra(AudioBridgeService.EXTRA_PROFILE, latencyProfile)
         }
         try {
             ContextCompat.startForegroundService(this, startIntent)
@@ -512,10 +602,11 @@ class MainActivity : AppCompatActivity() {
             appendLine("App: v${BuildConfig.VERSION_NAME} (${BuildConfig.BUILD_DATE})")
             appendLine("Dispositivo: ${Build.MANUFACTURER} ${Build.MODEL} (Android ${Build.VERSION.RELEASE})")
             appendLine("Modo: ${if (modeDirect) "directo-movil" else "puente-pc"}")
+            appendLine("Perfil de audio: $latencyProfile")
             appendLine("IP móvil: $phoneIp:${LocalAudioServer.DEFAULT_PORT}")
             appendLine("Salida: ${tvBluetoothOutput.text}")
             appendLine("Estado: ${tvConnectionStatus.text}")
-            appendLine("Telemetría: ${tvTelemetry.text}")
+            appendLine("Telemetría: Red=${tvStatNet.text} · Buffer=${tvStatBuffer.text} · Paquetes=${tvStatPackets.text}")
             appendLine("Sala: ${etRoomCode.text}")
             if (!modeDirect) {
                 appendLine("Servidor local (Plan B): ${etServerUrl.text}")
@@ -561,10 +652,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun renderTelemetry(rttMs: Long, packets: Long, bufferMs: Int, dropped: Long) {
-        val rttStr = if (rttMs >= 0) "$rttMs ms" else "—"
-        val bufStr = if (bufferMs > 0) "$bufferMs ms" else "—"
-        val dropStr = if (dropped > 0) " · Desc: $dropped" else ""
-        tvTelemetry.text = "Red: $rttStr · Buffer app: $bufStr · Paq: $packets$dropStr"
+        tvStatNet.text = if (rttMs >= 0) "$rttMs ms" else "—"
+        tvStatBuffer.text = if (bufferMs > 0) "$bufferMs ms" else "—"
+        tvStatPackets.text = if (dropped > 0) "$packets (-$dropped)" else "$packets"
     }
 
     private fun syncFromServiceState() {
@@ -572,7 +662,9 @@ class MainActivity : AppCompatActivity() {
         isSenderConnected = AudioBridgeService.currentSenderConnected
         if (isConnected) {
             modeDirect = AudioBridgeService.currentDirectMode
+            latencyProfile = normalizeProfile(AudioBridgeService.currentProfile)
             applyModeUi()
+            applyProfileUi()
         }
         if (isConnected || AudioBridgeService.currentStatusText != "Desconectado") {
             tvConnectionStatus.text = AudioBridgeService.currentStatusText
@@ -715,11 +807,24 @@ class MainActivity : AppCompatActivity() {
                     (device.type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
                         device.type == AudioDeviceInfo.TYPE_BLE_SPEAKER))
         }
+        val radiusPx = 10f * resources.displayMetrics.density
         if (btDevice != null) {
             val name = btDevice.productName?.toString()?.takeIf { it.isNotBlank() } ?: "Audífonos Bluetooth"
             tvBluetoothOutput.text = "Bluetooth conectado: $name"
+            tvBluetoothBadge.text = "● BLUETOOTH"
+            tvBluetoothBadge.setTextColor(Color.parseColor("#34D399"))
+            tvBluetoothBadge.background = GradientDrawable().apply {
+                cornerRadius = radiusPx
+                setColor(Color.parseColor("#064E3B"))
+            }
         } else {
             tvBluetoothOutput.text = "Altavoz del smartphone (conecta tus cascos Bluetooth)"
+            tvBluetoothBadge.text = "● ALTAVOZ"
+            tvBluetoothBadge.setTextColor(Color.parseColor("#FCD34D"))
+            tvBluetoothBadge.background = GradientDrawable().apply {
+                cornerRadius = radiusPx
+                setColor(Color.parseColor("#451A03"))
+            }
         }
     }
 

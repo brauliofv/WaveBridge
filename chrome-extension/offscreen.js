@@ -1,9 +1,16 @@
 let activeStream = null;
 let audioCtx = null;
 let audioNode = null;
+let streamGainNode = null;
+let monitorGainNode = null;
+let currentSourceKind = 'desktop';
+let currentCaptureConfig = null;
 let socket = null;
 let seq = 0;
 let isShuttingDown = false;
+let reconnectTimer = null;
+let reconnectAttempt = 0;
+const MAX_RECONNECT_ATTEMPTS = 5;
 const peers = new Map();
 let activeReceivers = [];
 
@@ -50,17 +57,188 @@ async function diagnoseWebSocketFailure(wsUrl) {
   }
 }
 
+function clearReconnectTimer() {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+}
+
+function connectWebSocket(config) {
+  if (isShuttingDown || !activeStream || !audioCtx) return;
+
+  if (socket) {
+    socket.onclose = null;
+    socket.onerror = null;
+    socket.close();
+    socket = null;
+  }
+
+  let wsConnectedOnce = false;
+  let dropHandled = false;
+  const ws = new WebSocket(config.wsUrl);
+  socket = ws;
+
+  const handleSocketDrop = async (closeCode) => {
+    if (dropHandled || isShuttingDown) return;
+    dropHandled = true;
+    ws.onclose = null;
+    ws.onerror = null;
+    if (socket === ws) {
+      socket = null;
+    }
+    activeReceivers = [];
+    peers.forEach((pc) => pc.close());
+    peers.clear();
+
+    const audioTrack = activeStream?.getAudioTracks?.()[0];
+    const canRetry =
+      Boolean(audioTrack && audioTrack.readyState === 'live') &&
+      reconnectAttempt < MAX_RECONNECT_ATTEMPTS;
+
+    if (canRetry) {
+      reconnectAttempt += 1;
+      chrome.runtime.sendMessage({
+        type: 'CAPTURE_RECONNECTING',
+        attempt: reconnectAttempt,
+        maxAttempts: MAX_RECONNECT_ATTEMPTS,
+      }).catch(() => undefined);
+      clearReconnectTimer();
+      reconnectTimer = setTimeout(() => {
+        if (!isShuttingDown && activeStream && currentCaptureConfig) {
+          connectWebSocket(currentCaptureConfig);
+        }
+      }, 1200);
+      return;
+    }
+
+    const detail = wsConnectedOnce
+      ? `Conexión WebSocket cerrada (código ${closeCode ?? 1006}).`
+      : await diagnoseWebSocketFailure(config.wsUrl);
+    reportError(detail);
+    cleanup();
+    chrome.runtime.sendMessage({ type: 'CAPTURE_ENDED', errorMessage: detail });
+  };
+
+  ws.onerror = () => {
+    handleSocketDrop(1006);
+  };
+
+  ws.onclose = (ev) => {
+    handleSocketDrop(ev.code);
+  };
+
+  ws.onopen = () => {
+    wsConnectedOnce = true;
+    reconnectAttempt = 0;
+    clearReconnectTimer();
+    chrome.runtime.sendMessage({ type: 'CAPTURE_CONNECTED' });
+    ws.send(
+      JSON.stringify({
+        type: 'join',
+        room: config.roomCode,
+        role: 'sender',
+        deviceName: config.sourceKind === 'desktop' ? 'Chrome Todo el Navegador' : 'Extensión Chrome',
+      })
+    );
+    ws.send(
+      JSON.stringify({
+        type: 'stream-state',
+        state: {
+          active: true,
+          source: 'tab',
+          sourceLabel: config.sourceKind === 'desktop' ? 'Todo el navegador / Sistema' : 'Pestaña de Chrome',
+          codec: 'opus-256',
+          latencyPreset: 'balanced',
+          sampleRate: audioCtx.sampleRate,
+          channels: 2,
+          muted: false,
+        },
+      })
+    );
+  };
+
+  ws.onmessage = async (event) => {
+    if (typeof event.data !== 'string') return;
+    const data = JSON.parse(event.data);
+
+    if (data.type === 'room-presence' && Array.isArray(data.receivers)) {
+      activeReceivers = data.receivers;
+    } else if (data.type === 'receiver-joined') {
+      const pc = new RTCPeerConnection({
+        iceServers: [],
+      });
+      peers.set(data.peerId, pc);
+      activeStream.getAudioTracks().forEach((track) => pc.addTrack(track, activeStream));
+      pc.onicecandidate = (e) => {
+        if (e.candidate && ws.readyState === WebSocket.OPEN) {
+          ws.send(
+            JSON.stringify({
+              type: 'signal',
+              targetId: data.peerId,
+              payload: { candidate: e.candidate },
+            })
+          );
+        }
+      };
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(
+          JSON.stringify({
+            type: 'signal',
+            targetId: data.peerId,
+            payload: { sdp: pc.localDescription },
+          })
+        );
+      }
+    } else if (data.type === 'receiver-left') {
+      const pc = peers.get(data.peerId);
+      if (pc) {
+        pc.close();
+        peers.delete(data.peerId);
+      }
+    } else if (data.type === 'signal' && data.fromId) {
+      const pc = peers.get(data.fromId);
+      if (!pc) return;
+      if (data.payload.sdp) {
+        await pc.setRemoteDescription(new RTCSessionDescription(data.payload.sdp));
+      } else if (data.payload.candidate) {
+        await pc.addIceCandidate(new RTCIceCandidate(data.payload.candidate));
+      }
+    }
+  };
+}
+
 chrome.runtime.onMessage.addListener(async (msg) => {
   if (msg.target !== 'offscreen') return;
   if (msg.type === 'OFFSCREEN_STOP') {
     cleanup();
     return;
   }
+  if (msg.type === 'SET_AUDIO_CONTROL') {
+    if (streamGainNode && audioCtx && typeof msg.extVolume === 'number') {
+      const vol = Math.max(0, Math.min(1.5, msg.extVolume));
+      streamGainNode.gain.setTargetAtTime(vol, audioCtx.currentTime, 0.015);
+    }
+    if (monitorGainNode && audioCtx && currentSourceKind === 'tab' && typeof msg.pcMuted === 'boolean') {
+      monitorGainNode.gain.setTargetAtTime(msg.pcMuted ? 0 : 1, audioCtx.currentTime, 0.015);
+    }
+    return;
+  }
   if (msg.type === 'START_CAPTURE') {
     cleanup();
     isShuttingDown = false;
+    reconnectAttempt = 0;
+    currentSourceKind = msg.sourceKind === 'tab' ? 'tab' : 'desktop';
+    currentCaptureConfig = {
+      wsUrl: msg.wsUrl,
+      roomCode: msg.roomCode,
+      sourceKind: currentSourceKind,
+    };
+
     try {
-      if (msg.sourceKind === 'desktop') {
+      if (currentSourceKind === 'desktop') {
         activeStream = await navigator.mediaDevices.getUserMedia({
           audio: {
             mandatory: {
@@ -107,8 +285,18 @@ chrome.runtime.onMessage.addListener(async (msg) => {
 
       audioCtx = new AudioContext({ latencyHint: 'interactive', sampleRate: 48000 });
       const src = audioCtx.createMediaStreamSource(activeStream);
-      if (msg.sourceKind !== 'desktop') {
-        src.connect(audioCtx.destination);
+
+      streamGainNode = audioCtx.createGain();
+      const initVol = typeof msg.extVolume === 'number' ? Math.max(0, Math.min(1.5, msg.extVolume)) : 1.0;
+      streamGainNode.gain.value = initVol;
+      src.connect(streamGainNode);
+
+      if (currentSourceKind === 'tab') {
+        const initPcMuted = msg.pcMuted !== false;
+        monitorGainNode = audioCtx.createGain();
+        monitorGainNode.gain.value = initPcMuted ? 0 : 1;
+        src.connect(monitorGainNode);
+        monitorGainNode.connect(audioCtx.destination);
       }
 
       const silentSink = audioCtx.createGain();
@@ -132,7 +320,7 @@ chrome.runtime.onMessage.addListener(async (msg) => {
         });
         workletNode.port.onmessage = (ev) => sendBinaryIfReady(ev.data);
         audioNode = workletNode;
-        src.connect(workletNode);
+        streamGainNode.connect(workletNode);
         workletNode.connect(silentSink);
       } else {
         const processor = audioCtx.createScriptProcessor(256, 2, 2);
@@ -153,107 +341,12 @@ chrome.runtime.onMessage.addListener(async (msg) => {
           );
         };
         audioNode = processor;
-        src.connect(processor);
+        streamGainNode.connect(processor);
         processor.connect(silentSink);
       }
       silentSink.connect(audioCtx.destination);
 
-      let wsConnectedOnce = false;
-      socket = new WebSocket(msg.wsUrl);
-      socket.onerror = async () => {
-        if (isShuttingDown) return;
-        const detail = await diagnoseWebSocketFailure(msg.wsUrl);
-        reportError(detail);
-        cleanup();
-        chrome.runtime.sendMessage({ type: 'CAPTURE_ENDED', errorMessage: detail });
-      };
-
-      socket.onclose = async (ev) => {
-        if (isShuttingDown) return;
-        const detail = wsConnectedOnce
-          ? `Conexión WebSocket cerrada (código ${ev.code}).`
-          : await diagnoseWebSocketFailure(msg.wsUrl);
-        reportError(detail);
-        cleanup();
-        chrome.runtime.sendMessage({ type: 'CAPTURE_ENDED', errorMessage: detail });
-      };
-
-      socket.onopen = () => {
-        wsConnectedOnce = true;
-        chrome.runtime.sendMessage({ type: 'CAPTURE_CONNECTED' });
-        socket.send(
-          JSON.stringify({
-            type: 'join',
-            room: msg.roomCode,
-            role: 'sender',
-            deviceName: msg.sourceKind === 'desktop' ? 'Chrome Todo el Navegador' : 'Extensión Chrome',
-          })
-        );
-        socket.send(
-          JSON.stringify({
-            type: 'stream-state',
-            state: {
-              active: true,
-              source: 'tab',
-              sourceLabel: msg.sourceKind === 'desktop' ? 'Todo el navegador / Sistema' : 'Pestaña de Chrome',
-              codec: 'opus-256',
-              latencyPreset: 'balanced',
-              sampleRate: audioCtx.sampleRate,
-              channels: 2,
-              muted: false,
-            },
-          })
-        );
-      };
-
-      socket.onmessage = async (event) => {
-        if (typeof event.data !== 'string') return;
-        const data = JSON.parse(event.data);
-
-        if (data.type === 'room-presence' && Array.isArray(data.receivers)) {
-          activeReceivers = data.receivers;
-        } else if (data.type === 'receiver-joined') {
-          const pc = new RTCPeerConnection({
-            iceServers: [],
-          });
-          peers.set(data.peerId, pc);
-          activeStream.getAudioTracks().forEach((track) => pc.addTrack(track, activeStream));
-          pc.onicecandidate = (e) => {
-            if (e.candidate) {
-              socket.send(
-                JSON.stringify({
-                  type: 'signal',
-                  targetId: data.peerId,
-                  payload: { candidate: e.candidate },
-                })
-              );
-            }
-          };
-          const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-          socket.send(
-            JSON.stringify({
-              type: 'signal',
-              targetId: data.peerId,
-              payload: { sdp: pc.localDescription },
-            })
-          );
-        } else if (data.type === 'receiver-left') {
-          const pc = peers.get(data.peerId);
-          if (pc) {
-            pc.close();
-            peers.delete(data.peerId);
-          }
-        } else if (data.type === 'signal' && data.fromId) {
-          const pc = peers.get(data.fromId);
-          if (!pc) return;
-          if (data.payload.sdp) {
-            await pc.setRemoteDescription(new RTCSessionDescription(data.payload.sdp));
-          } else if (data.payload.candidate) {
-            await pc.addIceCandidate(new RTCIceCandidate(data.payload.candidate));
-          }
-        }
-      };
+      connectWebSocket(currentCaptureConfig);
     } catch (err) {
       const errMsg = `offscreen capture: ${err?.message || String(err)}`;
       reportError(errMsg);
@@ -265,6 +358,9 @@ chrome.runtime.onMessage.addListener(async (msg) => {
 
 function cleanup() {
   isShuttingDown = true;
+  clearReconnectTimer();
+  reconnectAttempt = 0;
+  currentCaptureConfig = null;
   activeReceivers = [];
   peers.forEach((pc) => pc.close());
   peers.clear();
@@ -276,6 +372,22 @@ function cleanup() {
       // ignore
     }
     audioNode = null;
+  }
+  if (streamGainNode) {
+    try {
+      streamGainNode.disconnect();
+    } catch {
+      // ignore
+    }
+    streamGainNode = null;
+  }
+  if (monitorGainNode) {
+    try {
+      monitorGainNode.disconnect();
+    } catch {
+      // ignore
+    }
+    monitorGainNode = null;
   }
   if (socket) {
     socket.onclose = null;

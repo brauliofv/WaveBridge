@@ -2,6 +2,8 @@ const LOCAL_BRIDGE_URL = 'http://localhost:3000';
 const ANDROID_DIRECT_PORT = 8765;
 const EXT_BUILD_DATE = '2026-11-23';
 
+const toggleNetBtn = document.getElementById('toggleNetBtn');
+const networkBody = document.getElementById('networkBody');
 const targetDirectBtn = document.getElementById('targetDirectBtn');
 const targetBridgeBtn = document.getElementById('targetBridgeBtn');
 const targetInputLabel = document.getElementById('targetInputLabel');
@@ -17,14 +19,22 @@ const statusEl = document.getElementById('status');
 const hintEl = document.getElementById('hint');
 const modeDesktopBtn = document.getElementById('modeDesktopBtn');
 const modeTabBtn = document.getElementById('modeTabBtn');
+const extVolumeSlider = document.getElementById('extVolumeSlider');
+const extVolumeLabel = document.getElementById('extVolumeLabel');
+const pcMuteWrap = document.getElementById('pcMuteWrap');
+const pcMuteBtn = document.getElementById('pcMuteBtn');
 const versionMetaEl = document.getElementById('versionMeta');
 const copyDiagBtn = document.getElementById('copyDiagBtn');
 
-const manifestVersion = chrome.runtime.getManifest().version || '1.0.4';
+const manifestVersion = chrome.runtime.getManifest().version || '1.0.5';
 versionMetaEl.textContent = `v${manifestVersion} · ${EXT_BUILD_DATE}`;
 
 let captureMode = 'desktop';
 let targetMode = 'direct';
+let extVolumePct = 100;
+let pcMuted = true;
+let isStreamingNow = false;
+let networkExpandedOverride = null;
 
 function randomCode() {
   const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -303,6 +313,65 @@ async function checkServerReachability(rawUrl, mode = targetMode) {
   }
 }
 
+function updateAudioControlsUi() {
+  extVolumeSlider.value = String(extVolumePct);
+  extVolumeLabel.textContent = `${extVolumePct}%`;
+  if (captureMode === 'tab') {
+    pcMuteWrap.className = 'pc-mute-wrap visible';
+    pcMuteBtn.className = pcMuted ? 'pc-mute-btn muted' : 'pc-mute-btn';
+    pcMuteBtn.textContent = pcMuted
+      ? 'Audio en PC: Silenciado (sin eco)'
+      : 'Audio en PC: Sonando en laptop';
+  } else {
+    pcMuteWrap.className = 'pc-mute-wrap';
+  }
+}
+
+function pushLiveAudioControls() {
+  chrome.runtime
+    .sendMessage({
+      target: 'offscreen',
+      type: 'SET_AUDIO_CONTROL',
+      extVolume: extVolumePct / 100,
+      pcMuted,
+    })
+    .catch(() => undefined);
+}
+
+extVolumeSlider.addEventListener('input', () => {
+  extVolumePct = Math.max(0, Math.min(150, Number(extVolumeSlider.value) || 0));
+  extVolumeLabel.textContent = `${extVolumePct}%`;
+  chrome.storage.local.set({ extVolume: extVolumePct });
+  pushLiveAudioControls();
+});
+
+pcMuteBtn.addEventListener('click', () => {
+  if (captureMode !== 'tab') return;
+  pcMuted = !pcMuted;
+  chrome.storage.local.set({ pcMuted });
+  updateAudioControlsUi();
+  pushLiveAudioControls();
+});
+
+toggleNetBtn.addEventListener('click', () => {
+  const currentlyOpen = networkBody.style.display !== 'none';
+  networkExpandedOverride = !currentlyOpen;
+  applyNetworkCollapseUi();
+});
+
+function applyNetworkCollapseUi() {
+  if (!isStreamingNow) {
+    networkExpandedOverride = null;
+    toggleNetBtn.className = 'collapse-btn';
+    networkBody.style.display = 'block';
+    return;
+  }
+  toggleNetBtn.className = 'collapse-btn visible';
+  const show = networkExpandedOverride === true;
+  networkBody.style.display = show ? 'block' : 'none';
+  toggleNetBtn.textContent = show ? 'Ocultar red ▴' : 'Ajustar red ▾';
+}
+
 copyLanBtn.addEventListener('click', async () => {
   const val = lanIpTextEl.textContent || '';
   if (!val || val === '—') return;
@@ -349,14 +418,18 @@ function setTargetMode(mode, storedData) {
   }
 }
 
-function setCaptureMode(mode) {
+function setCaptureMode(mode, persist = true) {
   captureMode = mode === 'tab' ? 'tab' : 'desktop';
+  if (persist) {
+    chrome.storage.local.set({ captureMode });
+  }
   modeDesktopBtn.className = captureMode === 'desktop' ? 'mode-btn active' : 'mode-btn';
   modeTabBtn.className = captureMode === 'tab' ? 'mode-btn active' : 'mode-btn';
   hintEl.textContent =
     captureMode === 'desktop'
       ? 'Elige "Pantalla completa" y marca "Compartir también el audio del sistema" para escuchar todas tus pestañas y notificaciones.'
-      : 'Captura únicamente el audio de la pestaña actual aunque cambies de ventana.';
+      : 'Captura solo la pestaña actual aunque cambies de ventana. Puedes silenciarla en la laptop sin quitar el sonido al sistema.';
+  updateAudioControlsUi();
   chrome.storage.local.get(['streaming', 'lastError'], (data) =>
     updateUi(Boolean(data.streaming), data.lastError || '')
   );
@@ -374,8 +447,14 @@ targetBridgeBtn.addEventListener('click', async () => {
   setTargetMode('bridge', { bridgeUrl: data.bridgeUrl || LOCAL_BRIDGE_URL });
 });
 
-modeDesktopBtn.addEventListener('click', () => setCaptureMode('desktop'));
-modeTabBtn.addEventListener('click', () => setCaptureMode('tab'));
+modeDesktopBtn.addEventListener('click', () => {
+  if (isStreamingNow) return;
+  setCaptureMode('desktop', true);
+});
+modeTabBtn.addEventListener('click', () => {
+  if (isStreamingNow) return;
+  setCaptureMode('tab', true);
+});
 
 checkServerBtn.addEventListener('click', async () => {
   if (targetMode === 'direct') {
@@ -402,12 +481,26 @@ serverInput.addEventListener('change', async () => {
 });
 
 chrome.storage.local.get(
-  ['roomCode', 'targetMode', 'directUrl', 'bridgeUrl', 'streaming', 'captureMode', 'errorLogs', 'lastError'],
+  [
+    'roomCode',
+    'targetMode',
+    'directUrl',
+    'bridgeUrl',
+    'streaming',
+    'captureMode',
+    'extVolume',
+    'pcMuted',
+    'errorLogs',
+    'lastError',
+  ],
   (data) => {
     roomInput.value = data.roomCode || randomCode();
+    extVolumePct = typeof data.extVolume === 'number' ? Math.max(0, Math.min(150, data.extVolume)) : 100;
+    pcMuted = data.pcMuted !== false;
     captureMode = data.captureMode === 'tab' ? 'tab' : 'desktop';
     setTargetMode(data.targetMode === 'bridge' ? 'bridge' : 'direct', data);
-    setCaptureMode(captureMode);
+    setCaptureMode(captureMode, false);
+    updateAudioControlsUi();
     updateUi(Boolean(data.streaming), data.lastError || '');
     if (Array.isArray(data.errorLogs) && data.errorLogs.length > 0) {
       copyDiagBtn.textContent = `Diagnóstico (${data.errorLogs.length})`;
@@ -418,10 +511,19 @@ chrome.storage.local.get(
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg.type === 'STATUS_CHANGED') {
     updateUi(Boolean(msg.streaming), msg.errorMessage || '');
+  } else if (msg.type === 'RECONNECT_STATUS') {
+    statusEl.className = 'status warn';
+    statusEl.textContent = `Reconectando Wi-Fi (${msg.attempt}/${msg.maxAttempts})...`;
   }
 });
 
 function updateUi(streaming, errorMessage) {
+  isStreamingNow = streaming;
+  modeDesktopBtn.disabled = streaming;
+  modeTabBtn.disabled = streaming;
+  roomInput.disabled = streaming;
+  applyNetworkCollapseUi();
+
   toggleBtn.textContent = streaming
     ? 'Detener transmisión'
     : captureMode === 'desktop'
@@ -430,7 +532,7 @@ function updateUi(streaming, errorMessage) {
   toggleBtn.className = streaming ? 'primary stop' : 'primary';
 
   if (streaming) {
-    statusEl.className = 'status';
+    statusEl.className = 'status ok';
     statusEl.textContent = `Transmitiendo en Wi-Fi local · Sala ${roomInput.value}`;
   } else if (errorMessage) {
     statusEl.className = 'status err';
@@ -473,6 +575,8 @@ toggleBtn.addEventListener('click', async () => {
     roomCode: code,
     targetMode,
     captureMode,
+    extVolume: extVolumePct,
+    pcMuted,
     lastError: '',
   };
   if (targetMode === 'direct') {
@@ -490,7 +594,6 @@ toggleBtn.addEventListener('click', async () => {
     return;
   }
 
-  // In case Buscar móvil updated roomInput during checkServerReachability
   const activeCode = roomInput.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
   await chrome.storage.local.set({ roomCode: activeCode });
 
@@ -513,6 +616,8 @@ toggleBtn.addEventListener('click', async () => {
           streamId,
           roomCode: activeCode,
           wsUrl: toWebSocketUrl(serverUrl, targetMode),
+          extVolume: extVolumePct / 100,
+          pcMuted: false,
         },
         (res) => {
           if (res && res.ok) {
@@ -541,6 +646,8 @@ toggleBtn.addEventListener('click', async () => {
           streamId,
           roomCode: activeCode,
           wsUrl: toWebSocketUrl(serverUrl, targetMode),
+          extVolume: extVolumePct / 100,
+          pcMuted,
         },
         (res) => {
           if (res && res.ok) {
@@ -562,24 +669,31 @@ copyDiagBtn.addEventListener('click', async () => {
     'bridgeUrl',
     'streaming',
     'captureMode',
+    'extVolume',
+    'pcMuted',
     'errorLogs',
   ]);
   const logs = Array.isArray(data.errorLogs) ? data.errorLogs : [];
   const activeTarget = data.targetMode === 'bridge' ? 'bridge' : 'direct';
   const activeUrl =
     activeTarget === 'direct' ? data.directUrl || 'sin detectar' : data.bridgeUrl || LOCAL_BRIDGE_URL;
+  const activeMode = data.captureMode || 'desktop';
   const report = [
     '=== WaveBridge Extensión Diagnóstico ===',
     `Versión: v${manifestVersion} (${EXT_BUILD_DATE})`,
     `Conexión: ${activeTarget}`,
     `Destino: ${activeUrl}`,
-    `Modo captura: ${data.captureMode || 'desktop'}`,
+    `Modo captura: ${activeMode}`,
+    `Volumen envío: ${typeof data.extVolume === 'number' ? data.extVolume : 100}%`,
+    activeMode === 'tab' ? `Audio en PC (pestaña): ${data.pcMuted !== false ? 'silenciado' : 'activo'}` : null,
     `Sala: ${data.roomCode || 'N/A'}`,
     `Transmitiendo: ${data.streaming ? 'sí' : 'no'}`,
     `Navegador: ${navigator.userAgent}`,
     '',
     logs.length > 0 ? `Errores recientes:\n${logs.join('\n')}` : 'Sin errores recientes.',
-  ].join('\n');
+  ]
+    .filter((line) => line !== null)
+    .join('\n');
 
   await navigator.clipboard.writeText(report);
   copyDiagBtn.textContent = 'Copiado';

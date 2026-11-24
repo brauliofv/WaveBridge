@@ -45,12 +45,17 @@ test('buildChromeExtensionFiles produces direct-to-Android MV3 manifest and offs
   assert.ok(manifest.permissions.includes('offscreen'));
   assert.deepEqual(manifest.host_permissions, ['http://*/*']);
 
+  const popupHtml = files.find((f) => f.path === 'popup.html');
+  assert.ok(popupHtml?.content.includes('extVolumeSlider'));
+  assert.ok(popupHtml?.content.includes('pcMuteBtn'));
+
   const popupJs = files.find((f) => f.path === 'popup.js');
   assert.ok(popupJs?.content.includes("const DEFAULT_SERVER_URL = 'http://192.168.1.50:3000'"));
   assert.ok(popupJs?.content.includes('const ANDROID_DIRECT_PORT = 8765'));
   assert.ok(popupJs?.content.includes('wavebridge-android'));
   assert.ok(popupJs?.content.includes("let targetMode = 'direct'"));
   assert.ok(popupJs?.content.includes('copyDiagBtn'));
+  assert.ok(popupJs?.content.includes('SET_AUDIO_CONTROL'));
   assert.ok(popupJs?.content.includes(EXTENSION_RELEASE_DATE));
   assert.ok(popupJs?.content.includes('/api/network-info'));
 
@@ -58,6 +63,8 @@ test('buildChromeExtensionFiles produces direct-to-Android MV3 manifest and offs
   assert.ok(offscreenJs?.content.includes('iceServers: []'));
   assert.ok(offscreenJs?.content.includes(':8765'));
   assert.ok(offscreenJs?.content.includes('wavebridge-pcm-processor'));
+  assert.ok(offscreenJs?.content.includes('SET_AUDIO_CONTROL'));
+  assert.ok(offscreenJs?.content.includes('MAX_RECONNECT_ATTEMPTS'));
   assert.ok(!offscreenJs?.content.includes('stun.l.google.com'));
 
   const workletJs = files.find((f) => f.path === 'pcm-worklet.js');

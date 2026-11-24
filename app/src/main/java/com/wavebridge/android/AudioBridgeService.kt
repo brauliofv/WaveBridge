@@ -34,6 +34,7 @@ class AudioBridgeService : Service() {
         const val ACTION_CONNECT = "com.wavebridge.android.ACTION_CONNECT"
         const val ACTION_DISCONNECT = "com.wavebridge.android.ACTION_DISCONNECT"
         const val ACTION_SET_VOLUME = "com.wavebridge.android.ACTION_SET_VOLUME"
+        const val ACTION_SET_PROFILE = "com.wavebridge.android.ACTION_SET_PROFILE"
         const val ACTION_STATE_UPDATE = "com.wavebridge.android.ACTION_STATE_UPDATE"
 
         const val EXTRA_SERVER_URL = "extra_server_url"
@@ -41,6 +42,11 @@ class AudioBridgeService : Service() {
         const val EXTRA_ROOM_CODE = "extra_room_code"
         const val EXTRA_VOLUME = "extra_volume"
         const val EXTRA_MUTED = "extra_muted"
+        const val EXTRA_PROFILE = "extra_profile"
+
+        const val PROFILE_ULTRA = "ultra"
+        const val PROFILE_BALANCED = "balanced"
+        const val PROFILE_STABLE = "stable"
 
         const val EXTRA_IS_CONNECTED = "extra_is_connected"
         const val EXTRA_DIRECT_MODE = "extra_direct_mode"
@@ -53,9 +59,6 @@ class AudioBridgeService : Service() {
 
         private const val CHANNEL_ID = "wavebridge_playback"
         private const val NOTIF_ID = 1042
-        private const val MAX_QUEUE_MS = 32L
-        private const val INITIAL_TRACK_BUFFER_MS = 32
-        private const val MAX_TRACK_BUFFER_MS = 64
 
         @Volatile
         var currentIsConnected = false
@@ -91,6 +94,10 @@ class AudioBridgeService : Service() {
 
         @Volatile
         var currentDropped = 0L
+            private set
+
+        @Volatile
+        var currentProfile = PROFILE_BALANCED
             private set
 
         private val errorHistory = ArrayDeque<String>()
@@ -139,13 +146,58 @@ class AudioBridgeService : Service() {
     private val droppedCounter = AtomicLong(0L)
     private var writtenFramesCounter = 0L
 
+    private data class LatencyProfileSpec(
+        val id: String,
+        val initialTrackMs: Int,
+        val maxTrackMs: Int,
+        val softQueueMs: Long,
+        val hardQueueMs: Long,
+        val overSoftStreakLimit: Int
+    )
+
+    private fun profileSpecFor(profileId: String?): LatencyProfileSpec {
+        return when (profileId) {
+            PROFILE_ULTRA -> LatencyProfileSpec(
+                id = PROFILE_ULTRA,
+                initialTrackMs = 24,
+                maxTrackMs = 44,
+                softQueueMs = 26L,
+                hardQueueMs = 40L,
+                overSoftStreakLimit = 3
+            )
+            PROFILE_STABLE -> LatencyProfileSpec(
+                id = PROFILE_STABLE,
+                initialTrackMs = 56,
+                maxTrackMs = 88,
+                softQueueMs = 68L,
+                hardQueueMs = 95L,
+                overSoftStreakLimit = 5
+            )
+            else -> LatencyProfileSpec(
+                id = PROFILE_BALANCED,
+                initialTrackMs = 36,
+                maxTrackMs = 64,
+                softQueueMs = 42L,
+                hardQueueMs = 60L,
+                overSoftStreakLimit = 4
+            )
+        }
+    }
+
     @Volatile
-    private var targetTrackMs = INITIAL_TRACK_BUFFER_MS
+    private var activeProfileSpec = profileSpecFor(PROFILE_BALANCED)
+
+    @Volatile
+    private var targetTrackMs = activeProfileSpec.initialTrackMs
 
     @Volatile
     private var activeTrackBufferMs = 0
 
     private var lastUnderrunCount = 0
+    private var overSoftQueueStreak = 0
+    private var needsSmoothSplice = false
+    private var lastSampleL: Short = 0
+    private var lastSampleR: Short = 0
 
     @Volatile
     private var lastRttMs: Long = -1L
@@ -171,14 +223,23 @@ class AudioBridgeService : Service() {
             ACTION_START_DIRECT -> {
                 val roomCode = intent.getStringExtra(EXTRA_ROOM_CODE) ?: return START_NOT_STICKY
                 val listenHost = intent.getStringExtra(EXTRA_LISTEN_HOST) ?: "Wi-Fi local"
+                if (intent.hasExtra(EXTRA_PROFILE)) {
+                    applyLatencyProfile(intent.getStringExtra(EXTRA_PROFILE), updateTrackNow = false)
+                }
                 startForeground(NOTIF_ID, buildNotification("Receptor directo · Sala $roomCode"))
                 startDirectServer(roomCode, listenHost)
             }
             ACTION_CONNECT -> {
                 val serverUrl = intent.getStringExtra(EXTRA_SERVER_URL) ?: return START_NOT_STICKY
                 val roomCode = intent.getStringExtra(EXTRA_ROOM_CODE) ?: return START_NOT_STICKY
+                if (intent.hasExtra(EXTRA_PROFILE)) {
+                    applyLatencyProfile(intent.getStringExtra(EXTRA_PROFILE), updateTrackNow = false)
+                }
                 startForeground(NOTIF_ID, buildNotification("Conectando a sala $roomCode..."))
                 connectToRoom(serverUrl, roomCode)
+            }
+            ACTION_SET_PROFILE -> {
+                applyLatencyProfile(intent.getStringExtra(EXTRA_PROFILE), updateTrackNow = true)
             }
             ACTION_SET_VOLUME -> {
                 if (intent.hasExtra(EXTRA_VOLUME)) {
@@ -193,6 +254,31 @@ class AudioBridgeService : Service() {
             }
         }
         return START_NOT_STICKY
+    }
+
+    private fun applyLatencyProfile(profileId: String?, updateTrackNow: Boolean) {
+        val spec = profileSpecFor(profileId)
+        activeProfileSpec = spec
+        currentProfile = spec.id
+        targetTrackMs = spec.initialTrackMs
+        synchronized(queueLock) {
+            overSoftQueueStreak = 0
+        }
+        if (updateTrackNow) {
+            val track = audioTrack
+            if (track != null) {
+                try {
+                    val capFrames = track.bufferCapacityInFrames.coerceAtLeast(512)
+                    val minSafe = 512.coerceAtMost(capFrames)
+                    val desiredFrames = ((currentSampleRate * targetTrackMs) / 1000).coerceIn(minSafe, capFrames)
+                    track.bufferSizeInFrames = desiredFrames
+                    activeTrackBufferMs = ((track.bufferSizeInFrames * 1000L) / currentSampleRate).toInt()
+                    lastUnderrunCount = track.underrunCount
+                } catch (_: Exception) {
+                }
+            }
+            broadcastState()
+        }
     }
 
     private fun startDirectServer(roomCode: String, listenHost: String) {
@@ -392,14 +478,30 @@ class AudioBridgeService : Service() {
 
     private fun enqueuePcmFrame(frame: DecodedPcmFrame) {
         val durMs = frameDurationMs(frame)
+        val spec = activeProfileSpec
         var evictedCount = 0L
         synchronized(queueLock) {
             frameQueue.addLast(frame)
             queuedMs += durMs
-            while (queuedMs > MAX_QUEUE_MS && frameQueue.size > 1) {
+
+            if (queuedMs > spec.softQueueMs) {
+                overSoftQueueStreak++
+            } else {
+                overSoftQueueStreak = 0
+            }
+
+            while (
+                frameQueue.size > 1 &&
+                (queuedMs > spec.hardQueueMs ||
+                    (overSoftQueueStreak >= spec.overSoftStreakLimit && queuedMs > spec.softQueueMs))
+            ) {
                 val old = frameQueue.removeFirst()
                 queuedMs = (queuedMs - frameDurationMs(old)).coerceAtLeast(0L)
                 evictedCount++
+            }
+            if (evictedCount > 0L) {
+                overSoftQueueStreak = 0
+                needsSmoothSplice = true
             }
             queueLock.notifyAll()
         }
@@ -416,8 +518,10 @@ class AudioBridgeService : Service() {
             } catch (_: Exception) {
             }
             while (playbackRunning.get()) {
-                val nextFrame: DecodedPcmFrame? = synchronized(queueLock) {
+                val polledPair: Pair<DecodedPcmFrame, Boolean>? = synchronized(queueLock) {
+                    var wasEmpty = false
                     while (playbackRunning.get() && frameQueue.isEmpty()) {
+                        wasEmpty = true
                         try {
                             queueLock.wait(120)
                         } catch (_: InterruptedException) {
@@ -429,12 +533,14 @@ class AudioBridgeService : Service() {
                     } else {
                         val polled = frameQueue.removeFirst()
                         queuedMs = (queuedMs - frameDurationMs(polled)).coerceAtLeast(0L)
-                        polled
+                        val splice = needsSmoothSplice || wasEmpty
+                        needsSmoothSplice = false
+                        polled to splice
                     }
                 }
-                if (nextFrame != null) {
+                if (polledPair != null) {
                     try {
-                        playPcmFrame(nextFrame)
+                        playPcmFrame(polledPair.first, polledPair.second)
                     } catch (e: Exception) {
                         recordError("AudioTrack: ${e.localizedMessage ?: e.javaClass.simpleName}")
                     }
@@ -445,10 +551,25 @@ class AudioBridgeService : Service() {
         thread.start()
     }
 
-    private fun playPcmFrame(frame: DecodedPcmFrame) {
+    private fun playPcmFrame(frame: DecodedPcmFrame, spliceNeeded: Boolean) {
         val track = ensureAudioTrack(frame.sampleRate, frame.channels) ?: return
         val gain = if (isMuted) 0f else currentVolume
         AudioPacketDecoder.applyGainInPlace(frame.pcmBytes, gain)
+
+        val endSamples = if (spliceNeeded) {
+            AudioPacketDecoder.applySmoothSplice(
+                frame.pcmBytes,
+                frame.sampleRate,
+                frame.channels,
+                lastSampleL,
+                lastSampleR
+            )
+        } else {
+            AudioPacketDecoder.readLastFrameSamples(frame.pcmBytes, frame.channels)
+        }
+        lastSampleL = endSamples.first
+        lastSampleR = endSamples.second
+
         if (track.playState != AudioTrack.PLAYSTATE_PLAYING) {
             track.play()
         }
@@ -456,10 +577,11 @@ class AudioBridgeService : Service() {
 
         writtenFramesCounter++
         if (writtenFramesCounter % 150L == 0L) {
+            val spec = activeProfileSpec
             val underruns = track.underrunCount
-            if (underruns > lastUnderrunCount + 2 && targetTrackMs < MAX_TRACK_BUFFER_MS) {
+            if (underruns > lastUnderrunCount + 2 && targetTrackMs < spec.maxTrackMs) {
                 lastUnderrunCount = underruns
-                targetTrackMs = (targetTrackMs + 8).coerceAtMost(MAX_TRACK_BUFFER_MS)
+                targetTrackMs = (targetTrackMs + 8).coerceAtMost(spec.maxTrackMs)
                 val capFrames = track.bufferCapacityInFrames.coerceAtLeast(512)
                 val minSafe = 512.coerceAtMost(capFrames)
                 val desiredFrames = ((frame.sampleRate * targetTrackMs) / 1000).coerceIn(minSafe, capFrames)
@@ -567,6 +689,7 @@ class AudioBridgeService : Service() {
             putExtra(EXTRA_PACKETS, currentPackets)
             putExtra(EXTRA_BUFFER_MS, bufMs)
             putExtra(EXTRA_DROPPED, droppedNow)
+            putExtra(EXTRA_PROFILE, currentProfile)
         }
         sendBroadcast(intent)
     }
@@ -610,8 +733,12 @@ class AudioBridgeService : Service() {
         }
         audioTrack = null
         activeTrackBufferMs = 0
-        targetTrackMs = INITIAL_TRACK_BUFFER_MS
+        targetTrackMs = activeProfileSpec.initialTrackMs
         lastUnderrunCount = 0
+        overSoftQueueStreak = 0
+        needsSmoothSplice = false
+        lastSampleL = 0
+        lastSampleR = 0
         writtenFramesCounter = 0L
         droppedCounter.set(0L)
         currentBufferMs = 0
