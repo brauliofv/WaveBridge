@@ -1,6 +1,6 @@
 const LOCAL_BRIDGE_URL = 'http://localhost:3000';
 const ANDROID_DIRECT_PORT = 8765;
-const EXT_BUILD_DATE = '2026-11-22';
+const EXT_BUILD_DATE = '2026-11-23';
 
 const targetDirectBtn = document.getElementById('targetDirectBtn');
 const targetBridgeBtn = document.getElementById('targetBridgeBtn');
@@ -20,7 +20,7 @@ const modeTabBtn = document.getElementById('modeTabBtn');
 const versionMetaEl = document.getElementById('versionMeta');
 const copyDiagBtn = document.getElementById('copyDiagBtn');
 
-const manifestVersion = chrome.runtime.getManifest().version || '1.0.3';
+const manifestVersion = chrome.runtime.getManifest().version || '1.0.4';
 versionMetaEl.textContent = `v${manifestVersion} · ${EXT_BUILD_DATE}`;
 
 let captureMode = 'desktop';

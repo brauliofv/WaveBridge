@@ -32,6 +32,7 @@ test('buildChromeExtensionFiles produces direct-to-Android MV3 manifest and offs
     'background.js',
     'offscreen.html',
     'offscreen.js',
+    'pcm-worklet.js',
   ]);
 
   const manifestFile = files.find((f) => f.path === 'manifest.json');
@@ -56,5 +57,9 @@ test('buildChromeExtensionFiles produces direct-to-Android MV3 manifest and offs
   const offscreenJs = files.find((f) => f.path === 'offscreen.js');
   assert.ok(offscreenJs?.content.includes('iceServers: []'));
   assert.ok(offscreenJs?.content.includes(':8765'));
+  assert.ok(offscreenJs?.content.includes('wavebridge-pcm-processor'));
   assert.ok(!offscreenJs?.content.includes('stun.l.google.com'));
+
+  const workletJs = files.find((f) => f.path === 'pcm-worklet.js');
+  assert.ok(workletJs?.content.includes('registerProcessor'));
 });

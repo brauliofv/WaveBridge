@@ -394,8 +394,8 @@ export function useAudioSender(initialRoomCode?: string) {
         const mediaDest = ctx.createMediaStreamDestination();
         mediaDestRef.current = mediaDest;
 
-        // PCM WebSocket relay processor (runs smoothly for PCM Raw or fallback)
-        const processor = ctx.createScriptProcessor(1024, 2, 2);
+        // Low-latency PCM WebSocket relay processor (256 frames ~ 5.3 ms @ 48 kHz)
+        const processor = ctx.createScriptProcessor(256, 2, 2);
         const silentSink = ctx.createGain();
         silentSink.gain.value = 0;
 
@@ -408,7 +408,7 @@ export function useAudioSender(initialRoomCode?: string) {
           const needsWsAudio =
             stateRef.current.codec === 'pcm-raw' ||
             activeReceivers.some((r) => r.transportMode !== 'webrtc');
-          if (!needsWsAudio) return;
+          if (!needsWsAudio || ws.bufferedAmount > 16384) return;
 
           const left = ev.inputBuffer.getChannelData(0);
           const right =

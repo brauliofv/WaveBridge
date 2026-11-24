@@ -108,7 +108,7 @@ Si prefieres ejecutar toda la interfaz web (para emitir directamente sin usar ex
 
 ## Reporte rápido de errores y versión
 
-- Tanto la **App Android** (`v1.0.4`) como la **Extensión** (`v1.0.3`) y la **Interfaz Web** (`v1.0.4`) muestran la versión actual y la fecha junto al botón **Reportar error** / **Diagnóstico**.
+- Tanto la **App Android** (`v1.0.5`) como la **Extensión** (`v1.0.4`) y la **Interfaz Web** (`v1.0.5`) muestran la versión actual y la fecha junto al botón **Reportar error** / **Diagnóstico**.
 - Al pulsarlo se copia/comparte automáticamente el detalle técnico completo para diagnosticar cualquier problema de red o captura.
 
 ---
@@ -117,8 +117,8 @@ Si prefieres ejecutar toda la interfaz web (para emitir directamente sin usar ex
 
 | Ruta | Descripción |
 | :--- | :--- |
-| `app/` | App nativa Android en Kotlin (`LocalAudioServer`, `AudioBridgeService`, `AudioPacketDecoder`, `MainActivity`). |
-| `chrome-extension/` | Extensión Manifest V3 (`manifest.json`, `popup.*`, `background.js`, `offscreen.*`). |
+| `app/` | App nativa Android en Kotlin con buffer acotado de baja latencia (`LocalAudioServer`, `AudioBridgeService`, `AudioPacketDecoder`, `MainActivity`). |
+| `chrome-extension/` | Extensión Manifest V3 con `AudioWorklet` de baja latencia (`manifest.json`, `popup.*`, `background.js`, `offscreen.*`, `pcm-worklet.js`). |
 | `bridge.py` | **Plan B:** puente Wi-Fi local en Python 3 sin dependencias (`python3 bridge.py`). |
 | `server.ts` y `src/` | **Plan C:** servidor Node.js + interfaz web completa (Emisor PC, Receptor QR y empaquetador `.zip`). |
 | `.github/workflows/build-apk.yml` | Workflow de GitHub Actions que compila y publica `wavebridge.apk` en Releases (sin incluir la extensión). |

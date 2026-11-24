@@ -1,5 +1,6 @@
 let activeStream = null;
 let audioCtx = null;
+let audioNode = null;
 let socket = null;
 let seq = 0;
 let isShuttingDown = false;
@@ -110,29 +111,51 @@ chrome.runtime.onMessage.addListener(async (msg) => {
         src.connect(audioCtx.destination);
       }
 
-      const processor = audioCtx.createScriptProcessor(1024, 2, 2);
       const silentSink = audioCtx.createGain();
       silentSink.gain.value = 0;
 
-      processor.onaudioprocess = (ev) => {
+      const sendBinaryIfReady = (packetBuffer) => {
         if (!socket || socket.readyState !== WebSocket.OPEN || activeReceivers.length === 0) return;
         const needsWs = activeReceivers.some((r) => r.transportMode !== 'webrtc');
         if (!needsWs) return;
-
-        const left = ev.inputBuffer.getChannelData(0);
-        const right = ev.inputBuffer.numberOfChannels > 1 ? ev.inputBuffer.getChannelData(1) : left;
-        const interleaved = new Float32Array(left.length * 2);
-        for (let i = 0; i < left.length; i++) {
-          interleaved[i * 2] = left[i];
-          interleaved[i * 2 + 1] = right[i];
-        }
-        socket.send(
-          encodeAudioPacket(interleaved, seq++, performance.now(), audioCtx.sampleRate, 2)
-        );
+        if (socket.bufferedAmount > 16384) return;
+        socket.send(packetBuffer);
       };
 
-      src.connect(processor);
-      processor.connect(silentSink);
+      if (audioCtx.audioWorklet) {
+        await audioCtx.audioWorklet.addModule(chrome.runtime.getURL('pcm-worklet.js'));
+        const workletNode = new AudioWorkletNode(audioCtx, 'wavebridge-pcm-processor', {
+          numberOfInputs: 1,
+          numberOfOutputs: 1,
+          channelCount: 2,
+          channelCountMode: 'explicit',
+        });
+        workletNode.port.onmessage = (ev) => sendBinaryIfReady(ev.data);
+        audioNode = workletNode;
+        src.connect(workletNode);
+        workletNode.connect(silentSink);
+      } else {
+        const processor = audioCtx.createScriptProcessor(256, 2, 2);
+        processor.onaudioprocess = (ev) => {
+          if (!socket || socket.readyState !== WebSocket.OPEN || activeReceivers.length === 0) return;
+          const needsWs = activeReceivers.some((r) => r.transportMode !== 'webrtc');
+          if (!needsWs || socket.bufferedAmount > 16384) return;
+
+          const left = ev.inputBuffer.getChannelData(0);
+          const right = ev.inputBuffer.numberOfChannels > 1 ? ev.inputBuffer.getChannelData(1) : left;
+          const interleaved = new Float32Array(left.length * 2);
+          for (let i = 0; i < left.length; i++) {
+            interleaved[i * 2] = left[i];
+            interleaved[i * 2 + 1] = right[i];
+          }
+          socket.send(
+            encodeAudioPacket(interleaved, seq++, performance.now(), audioCtx.sampleRate, 2)
+          );
+        };
+        audioNode = processor;
+        src.connect(processor);
+        processor.connect(silentSink);
+      }
       silentSink.connect(audioCtx.destination);
 
       let wsConnectedOnce = false;
@@ -245,6 +268,15 @@ function cleanup() {
   activeReceivers = [];
   peers.forEach((pc) => pc.close());
   peers.clear();
+  if (audioNode) {
+    try {
+      audioNode.disconnect();
+      if (audioNode.port) audioNode.port.onmessage = null;
+    } catch {
+      // ignore
+    }
+    audioNode = null;
+  }
   if (socket) {
     socket.onclose = null;
     socket.onerror = null;

@@ -25,6 +25,8 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.card.MaterialCardView
 import kotlinx.coroutines.CoroutineScope
@@ -86,10 +88,11 @@ class MainActivity : AppCompatActivity() {
             val statusText = intent.getStringExtra(AudioBridgeService.EXTRA_STATUS_TEXT) ?: "Desconectado"
             val rttMs = intent.getLongExtra(AudioBridgeService.EXTRA_RTT_MS, -1L)
             val packets = intent.getLongExtra(AudioBridgeService.EXTRA_PACKETS, 0L)
+            val bufferMs = intent.getIntExtra(AudioBridgeService.EXTRA_BUFFER_MS, 0)
+            val dropped = intent.getLongExtra(AudioBridgeService.EXTRA_DROPPED, 0L)
 
             tvConnectionStatus.text = statusText
-            val rttStr = if (rttMs >= 0) "$rttMs ms" else "—"
-            tvTelemetry.text = "Latencia RTT: $rttStr · Paquetes: $packets"
+            renderTelemetry(rttMs, packets, bufferMs, dropped)
             updateConnectButtonUi()
         }
     }
@@ -107,6 +110,25 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        val mainContent = findViewById<LinearLayout>(R.id.mainContent)
+        val density = resources.displayMetrics.density
+        val padHorizontal = (20 * density).toInt()
+        val padTop = (20 * density).toInt()
+        val padBottom = (56 * density).toInt()
+        ViewCompat.setOnApplyWindowInsetsListener(mainContent) { view, windowInsets ->
+            val bars = windowInsets.getInsets(
+                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
+            )
+            view.setPadding(
+                padHorizontal + bars.left,
+                padTop + bars.top,
+                padHorizontal + bars.right,
+                padBottom + bars.bottom
+            )
+            windowInsets
+        }
+        ViewCompat.requestApplyInsets(mainContent)
 
         btnModeDirect = findViewById(R.id.btnModeDirect)
         btnModeBridge = findViewById(R.id.btnModeBridge)
@@ -153,8 +175,12 @@ class MainActivity : AppCompatActivity() {
                 etRoomCode.setText(AudioBridgeService.currentRoomCode)
             }
             tvConnectionStatus.text = AudioBridgeService.currentStatusText
-            val rttStr = if (AudioBridgeService.currentRttMs >= 0) "${AudioBridgeService.currentRttMs} ms" else "—"
-            tvTelemetry.text = "Latencia RTT: $rttStr · Paquetes: ${AudioBridgeService.currentPackets}"
+            renderTelemetry(
+                AudioBridgeService.currentRttMs,
+                AudioBridgeService.currentPackets,
+                AudioBridgeService.currentBufferMs,
+                AudioBridgeService.currentDropped
+            )
         }
 
         applyModeUi()
@@ -534,6 +560,13 @@ class MainActivity : AppCompatActivity() {
         syncFromServiceState()
     }
 
+    private fun renderTelemetry(rttMs: Long, packets: Long, bufferMs: Int, dropped: Long) {
+        val rttStr = if (rttMs >= 0) "$rttMs ms" else "—"
+        val bufStr = if (bufferMs > 0) "$bufferMs ms" else "—"
+        val dropStr = if (dropped > 0) " · Desc: $dropped" else ""
+        tvTelemetry.text = "Red: $rttStr · Buffer app: $bufStr · Paq: $packets$dropStr"
+    }
+
     private fun syncFromServiceState() {
         isConnected = AudioBridgeService.currentIsConnected
         isSenderConnected = AudioBridgeService.currentSenderConnected
@@ -544,8 +577,12 @@ class MainActivity : AppCompatActivity() {
         if (isConnected || AudioBridgeService.currentStatusText != "Desconectado") {
             tvConnectionStatus.text = AudioBridgeService.currentStatusText
         }
-        val rttStr = if (AudioBridgeService.currentRttMs >= 0) "${AudioBridgeService.currentRttMs} ms" else "—"
-        tvTelemetry.text = "Latencia RTT: $rttStr · Paquetes: ${AudioBridgeService.currentPackets}"
+        renderTelemetry(
+            AudioBridgeService.currentRttMs,
+            AudioBridgeService.currentPackets,
+            AudioBridgeService.currentBufferMs,
+            AudioBridgeService.currentDropped
+        )
         updateConnectButtonUi()
     }
 

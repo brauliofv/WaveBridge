@@ -12,6 +12,7 @@ import android.media.AudioTrack
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.os.Process
 import androidx.core.app.NotificationCompat
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -47,9 +48,14 @@ class AudioBridgeService : Service() {
         const val EXTRA_STATUS_TEXT = "extra_status_text"
         const val EXTRA_RTT_MS = "extra_rtt_ms"
         const val EXTRA_PACKETS = "extra_packets"
+        const val EXTRA_BUFFER_MS = "extra_buffer_ms"
+        const val EXTRA_DROPPED = "extra_dropped"
 
         private const val CHANNEL_ID = "wavebridge_playback"
         private const val NOTIF_ID = 1042
+        private const val MAX_QUEUE_MS = 32L
+        private const val INITIAL_TRACK_BUFFER_MS = 32
+        private const val MAX_TRACK_BUFFER_MS = 64
 
         @Volatile
         var currentIsConnected = false
@@ -77,6 +83,14 @@ class AudioBridgeService : Service() {
 
         @Volatile
         var currentPackets = 0L
+            private set
+
+        @Volatile
+        var currentBufferMs = 0
+            private set
+
+        @Volatile
+        var currentDropped = 0L
             private set
 
         private val errorHistory = ArrayDeque<String>()
@@ -111,13 +125,27 @@ class AudioBridgeService : Service() {
     private var currentChannels = 2
     private var wakeLock: PowerManager.WakeLock? = null
 
-    private val audioExecutor = Executors.newSingleThreadExecutor()
+    private val queueLock = Object()
+    private val frameQueue = ArrayDeque<DecodedPcmFrame>()
+    private var queuedMs = 0L
+    private val playbackRunning = AtomicBoolean(false)
+    private var playbackThread: Thread? = null
     private var pingScheduler: ScheduledExecutorService? = null
 
     private val isConnectedFlag = AtomicBoolean(false)
     private val directModeFlag = AtomicBoolean(true)
     private val senderConnectedFlag = AtomicBoolean(false)
     private val packetsCounter = AtomicLong(0L)
+    private val droppedCounter = AtomicLong(0L)
+    private var writtenFramesCounter = 0L
+
+    @Volatile
+    private var targetTrackMs = INITIAL_TRACK_BUFFER_MS
+
+    @Volatile
+    private var activeTrackBufferMs = 0
+
+    private var lastUnderrunCount = 0
 
     @Volatile
     private var lastRttMs: Long = -1L
@@ -175,6 +203,7 @@ class AudioBridgeService : Service() {
         packetsCounter.set(0L)
         lastRttMs = 2L
         acquireWakeLock()
+        startPlaybackLoop()
 
         val server = LocalAudioServer(
             port = LocalAudioServer.DEFAULT_PORT,
@@ -195,15 +224,9 @@ class AudioBridgeService : Service() {
                 }
             },
             onPcmFrame = { frame ->
+                enqueuePcmFrame(frame)
                 val count = packetsCounter.incrementAndGet()
-                audioExecutor.execute {
-                    try {
-                        playPcmFrame(frame)
-                    } catch (e: Exception) {
-                        recordError("AudioTrack: ${e.localizedMessage ?: e.javaClass.simpleName}")
-                    }
-                }
-                if (count % 25L == 0L) {
+                if (count % 75L == 0L) {
                     broadcastState()
                 }
             },
@@ -239,11 +262,13 @@ class AudioBridgeService : Service() {
         currentDirectMode = false
         currentRoomCode = roomCode
         packetsCounter.set(0L)
+        droppedCounter.set(0L)
         lastRttMs = -1L
         statusText = "Conectando a sala $roomCode..."
         broadcastState()
 
         acquireWakeLock()
+        startPlaybackLoop()
 
         val wsUrl = toWebSocketUrl(rawServerUrl)
         val request = Request.Builder().url(wsUrl).build()
@@ -322,15 +347,9 @@ class AudioBridgeService : Service() {
             override fun onMessage(ws: WebSocket, bytes: ByteString) {
                 val frame = AudioPacketDecoder.decode(bytes.toByteArray()) ?: return
                 val becameActive = senderConnectedFlag.compareAndSet(false, true)
+                enqueuePcmFrame(frame)
                 val count = packetsCounter.incrementAndGet()
-                audioExecutor.execute {
-                    try {
-                        playPcmFrame(frame)
-                    } catch (e: Exception) {
-                        recordError("AudioTrack: ${e.localizedMessage ?: e.javaClass.simpleName}")
-                    }
-                }
-                if (becameActive || count % 25L == 0L) {
+                if (becameActive || count % 75L == 0L) {
                     if (becameActive) {
                         statusText = "Recibiendo audio en sala $roomCode"
                     }
@@ -366,6 +385,66 @@ class AudioBridgeService : Service() {
         })
     }
 
+    private fun frameDurationMs(frame: DecodedPcmFrame): Long {
+        val bytesPerMs = ((frame.sampleRate * frame.channels * 2L) / 1000L).coerceAtLeast(1L)
+        return (frame.pcmBytes.size / bytesPerMs).coerceAtLeast(1L)
+    }
+
+    private fun enqueuePcmFrame(frame: DecodedPcmFrame) {
+        val durMs = frameDurationMs(frame)
+        var evictedCount = 0L
+        synchronized(queueLock) {
+            frameQueue.addLast(frame)
+            queuedMs += durMs
+            while (queuedMs > MAX_QUEUE_MS && frameQueue.size > 1) {
+                val old = frameQueue.removeFirst()
+                queuedMs = (queuedMs - frameDurationMs(old)).coerceAtLeast(0L)
+                evictedCount++
+            }
+            queueLock.notifyAll()
+        }
+        if (evictedCount > 0L) {
+            droppedCounter.addAndGet(evictedCount)
+        }
+    }
+
+    private fun startPlaybackLoop() {
+        if (!playbackRunning.compareAndSet(false, true)) return
+        val thread = Thread({
+            try {
+                Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO)
+            } catch (_: Exception) {
+            }
+            while (playbackRunning.get()) {
+                val nextFrame: DecodedPcmFrame? = synchronized(queueLock) {
+                    while (playbackRunning.get() && frameQueue.isEmpty()) {
+                        try {
+                            queueLock.wait(120)
+                        } catch (_: InterruptedException) {
+                            return@synchronized null
+                        }
+                    }
+                    if (!playbackRunning.get() || frameQueue.isEmpty()) {
+                        null
+                    } else {
+                        val polled = frameQueue.removeFirst()
+                        queuedMs = (queuedMs - frameDurationMs(polled)).coerceAtLeast(0L)
+                        polled
+                    }
+                }
+                if (nextFrame != null) {
+                    try {
+                        playPcmFrame(nextFrame)
+                    } catch (e: Exception) {
+                        recordError("AudioTrack: ${e.localizedMessage ?: e.javaClass.simpleName}")
+                    }
+                }
+            }
+        }, "WaveBridge-AudioOut")
+        playbackThread = thread
+        thread.start()
+    }
+
     private fun playPcmFrame(frame: DecodedPcmFrame) {
         val track = ensureAudioTrack(frame.sampleRate, frame.channels) ?: return
         val gain = if (isMuted) 0f else currentVolume
@@ -374,6 +453,20 @@ class AudioBridgeService : Service() {
             track.play()
         }
         track.write(frame.pcmBytes, 0, frame.pcmBytes.size, AudioTrack.WRITE_BLOCKING)
+
+        writtenFramesCounter++
+        if (writtenFramesCounter % 150L == 0L) {
+            val underruns = track.underrunCount
+            if (underruns > lastUnderrunCount + 2 && targetTrackMs < MAX_TRACK_BUFFER_MS) {
+                lastUnderrunCount = underruns
+                targetTrackMs = (targetTrackMs + 8).coerceAtMost(MAX_TRACK_BUFFER_MS)
+                val capFrames = track.bufferCapacityInFrames.coerceAtLeast(512)
+                val minSafe = 512.coerceAtMost(capFrames)
+                val desiredFrames = ((frame.sampleRate * targetTrackMs) / 1000).coerceIn(minSafe, capFrames)
+                track.bufferSizeInFrames = desiredFrames
+                activeTrackBufferMs = ((track.bufferSizeInFrames * 1000L) / frame.sampleRate).toInt()
+            }
+        }
     }
 
     private fun ensureAudioTrack(sampleRate: Int, channels: Int): AudioTrack? {
@@ -415,6 +508,13 @@ class AudioBridgeService : Service() {
             .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
 
         val track = builder.build()
+        val capFrames = track.bufferCapacityInFrames.coerceAtLeast(512)
+        val minSafe = 512.coerceAtMost(capFrames)
+        val desiredFrames = ((sampleRate * targetTrackMs) / 1000).coerceIn(minSafe, capFrames)
+        track.bufferSizeInFrames = desiredFrames
+        activeTrackBufferMs = ((track.bufferSizeInFrames * 1000L) / sampleRate).toInt()
+        lastUnderrunCount = track.underrunCount
+
         audioTrack = track
         return track
     }
@@ -451,6 +551,12 @@ class AudioBridgeService : Service() {
         currentStatusText = statusText
         currentRttMs = lastRttMs
         currentPackets = packetsCounter.get()
+        val queueMsNow = synchronized(queueLock) { queuedMs.toInt() }
+        val bufMs = if (isConnectedFlag.get()) queueMsNow + activeTrackBufferMs else 0
+        val droppedNow = droppedCounter.get()
+        currentBufferMs = bufMs
+        currentDropped = droppedNow
+
         val intent = Intent(ACTION_STATE_UPDATE).apply {
             setPackage(packageName)
             putExtra(EXTRA_IS_CONNECTED, isConnectedFlag.get())
@@ -459,6 +565,8 @@ class AudioBridgeService : Service() {
             putExtra(EXTRA_STATUS_TEXT, statusText)
             putExtra(EXTRA_RTT_MS, lastRttMs)
             putExtra(EXTRA_PACKETS, currentPackets)
+            putExtra(EXTRA_BUFFER_MS, bufMs)
+            putExtra(EXTRA_DROPPED, droppedNow)
         }
         sendBroadcast(intent)
     }
@@ -474,13 +582,40 @@ class AudioBridgeService : Service() {
     private fun cleanupConnection() {
         pingScheduler?.shutdownNow()
         pingScheduler = null
+        playbackRunning.set(false)
+        synchronized(queueLock) {
+            frameQueue.clear()
+            queuedMs = 0L
+            queueLock.notifyAll()
+        }
+        try {
+            audioTrack?.pause()
+            audioTrack?.flush()
+            audioTrack?.stop()
+        } catch (_: Exception) {
+        }
+        playbackThread?.interrupt()
+        try {
+            playbackThread?.join(250)
+        } catch (_: Exception) {
+        }
+        playbackThread = null
         localAudioServer?.stop()
         localAudioServer = null
         webSocket?.close(1000, "Desconectado por el usuario")
         webSocket = null
-        audioTrack?.stop()
-        audioTrack?.release()
+        try {
+            audioTrack?.release()
+        } catch (_: Exception) {
+        }
         audioTrack = null
+        activeTrackBufferMs = 0
+        targetTrackMs = INITIAL_TRACK_BUFFER_MS
+        lastUnderrunCount = 0
+        writtenFramesCounter = 0L
+        droppedCounter.set(0L)
+        currentBufferMs = 0
+        currentDropped = 0L
         isConnectedFlag.set(false)
         currentIsConnected = false
         senderConnectedFlag.set(false)
@@ -540,7 +675,6 @@ class AudioBridgeService : Service() {
 
     override fun onDestroy() {
         cleanupConnection()
-        audioExecutor.shutdownNow()
         super.onDestroy()
     }
 }

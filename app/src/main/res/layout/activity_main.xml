@@ -1,16 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/mainScrollView"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#0B0D10"
+    android:clipToPadding="false"
     android:fillViewport="true">
 
     <LinearLayout
+        android:id="@+id/mainContent"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="20dp">
+        android:paddingStart="20dp"
+        android:paddingTop="20dp"
+        android:paddingEnd="20dp"
+        android:paddingBottom="72dp">
 
         <TextView
             android:layout_width="wrap_content"
@@ -334,32 +340,34 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
+            android:layout_marginTop="20dp"
+            android:layout_marginBottom="12dp"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingHorizontal="4dp">
+            android:paddingHorizontal="4dp"
+            android:paddingVertical="4dp">
 
             <TextView
                 android:id="@+id/tvAppVersion"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="v1.0.4 · 2026-11-22"
+                android:text="v1.0.5 · 2026-11-23"
                 android:textColor="#6B7280"
-                android:textSize="11sp"
+                android:textSize="12sp"
                 android:typeface="monospace" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnDiagnostics"
                 style="@style/Widget.Material3.Button.TextButton"
                 android:layout_width="wrap_content"
-                android:layout_height="36dp"
+                android:layout_height="44dp"
                 android:minWidth="0dp"
-                android:paddingHorizontal="8dp"
+                android:paddingHorizontal="12dp"
                 android:text="Reportar error"
                 android:textAllCaps="false"
                 android:textColor="#9CA3AF"
-                android:textSize="11sp" />
+                android:textSize="12sp" />
         </LinearLayout>
 
     </LinearLayout>
